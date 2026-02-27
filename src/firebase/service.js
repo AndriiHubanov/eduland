@@ -320,6 +320,9 @@ export async function createPlayer({ name, group, heroName, heroClass, heroStats
       activeFrame: null,
     },
     seasonRating: { score: 0 },
+    sciences: {},
+    buildQueue: { buildingId: null, targetLevel: null, startedAt: null, endsAt: null },
+    productionLog: { lastCalculated: new Date() },
     buildings: {
       server:   { level: 1, workers: 0 },
       lab:      { level: 0, workers: 0 },
