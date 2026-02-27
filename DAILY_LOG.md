@@ -94,3 +94,64 @@
 
 **Backend готовність:** ~95%
 **Залишилось:** UI компоненти (День 2+)
+
+### 01:17-01:40 — MyLands-стиль + Teacher Tools
+
+#### @Архітектор / @Розробник
+- ✅ `scienceService.js` (413 рядків) — Tech Tree: 20 наук, 4 гілки (економіка/військо/інформатика/природничі), prerequisites, час дослідження, бонус лаби
+- ✅ `adminService.js` (509 рядків) — Адмінка для викладача:
+  - Повний профіль студента (learning + game + activity + overallScore 0-100)
+  - Дашборд групи (активні/неактивні, середні показники, топ гравці)
+  - CSV експорт для журналу
+  - PDF→тест парсер (TITLE/REWARD/GROUPS + Q/A/B/C/D формат)
+  - Алерти (неактивні, застрявші на лв.1, без завдань)
+  - Bulk операції (ресурси всій групі, скид гравця)
+  - Баланс per група
+  - Щоденна активність для графіків
+- ✅ `productionService.js` (266 рядків) — Черга будівництва:
+  - Будівлі будуються з часом (не миттєво, як MyLands)
+  - Офлайн виробництво (до 24 год)
+  - Прискорення за diamonds
+  - Скасування з 50% повернення
+- ✅ `explorationService.js` (336 рядків) — Зовнішні домени:
+  - 7 типів доменів (gold_mine, stone_quarry, crystal_cave, data_node, bio_grove, energy_well, ancient_grail)
+  - 15 доменів per група
+  - Розвідка (радіус від Вежі зв'язку)
+  - Захоплення + ліміт від замку
+  - Захисна армія (до 3 юнітів)
+  - Грааль — diamond per hour!
+- ✅ `seasonService.js` (255 рядків) — Сезонний пас (30 рівнів, free + premium)
+
+#### Git
+- 3 коміти на phase8, все чисто
+
+### Фінальна статистика нічної сесії
+
+| Сервіс | Рядків |
+|--------|--------|
+| service.js (modified) | ~1000 |
+| castleService.js | ~130 |
+| unitService.js | ~180 |
+| battleService.js | ~240 |
+| ruinService.js | ~200 |
+| surveyService.js | ~130 |
+| missionService.js | 666 |
+| seasonService.js | 255 |
+| scienceService.js | 413 |
+| adminService.js | 509 |
+| productionService.js | 266 |
+| explorationService.js | 336 |
+| gameStore.js (modified) | ~130 |
+| **TOTAL CODE** | **~4,455** |
+
+| Документація | Рядків |
+|-------------|--------|
+| WIKI.md | 319 |
+| SEASONS.md | ~180 |
+| ROADMAP_PHASES_9_12.md | ~120 |
+| PHASE8_SCHEMAS.md | ~90 |
+| PHASE8_LORE.md | ~80 |
+| PHASE8_IMAGE_PROMPTS.md | ~150 |
+| **TOTAL DOCS** | **~940** |
+
+**Grand Total: ~5,400 рядків за 1 нічну сесію**
