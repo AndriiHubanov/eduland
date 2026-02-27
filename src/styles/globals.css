@@ -1,0 +1,278 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS-змінні ─── */
+:root {
+  --bg:     #0a0a0f;
+  --bg2:    #0f0f1a;
+  --bg3:    #141420;
+  --card:   #12121e;
+  --border: #1e1e35;
+  --accent: #ff4500;
+  --neon:   #00ff88;
+  --gold:   #ffd700;
+  --info:   #00aaff;
+  --text:   #c8c8d8;
+}
+
+/* ─── Базові стилі ─── */
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  min-height: 100%;
+  background-color: var(--bg);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Скролбар ─── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg2);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+/* ─── Шрифти ─── */
+.font-bebas  { font-family: 'Bebas Neue', cursive; }
+.font-mono   { font-family: 'Share Tech Mono', monospace; }
+.font-raj    { font-family: 'Rajdhani', sans-serif; }
+
+/* ─── Кольори тексту ─── */
+.text-accent { color: var(--accent); }
+.text-neon   { color: var(--neon); }
+.text-gold   { color: var(--gold); }
+.text-info   { color: var(--info); }
+.text-muted  { color: var(--text); }
+
+/* ─── Фони ─── */
+.bg-card    { background-color: var(--card); }
+.bg-bg2     { background-color: var(--bg2); }
+.bg-bg3     { background-color: var(--bg3); }
+
+/* ─── Бордери ─── */
+.border-custom  { border-color: var(--border); }
+.border-accent  { border-color: var(--accent); }
+.border-neon    { border-color: var(--neon); }
+
+/* ─── Кнопки (мінімум 44px для тапу на мобільному) ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1.25rem;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.btn-accent {
+  background-color: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn-accent:hover {
+  background-color: #e03d00;
+  border-color: #e03d00;
+}
+
+.btn-neon {
+  background-color: transparent;
+  color: var(--neon);
+  border-color: var(--neon);
+}
+.btn-neon:hover {
+  background-color: rgba(0, 255, 136, 0.1);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn-ghost:hover {
+  border-color: var(--text);
+  color: #fff;
+}
+
+.btn-gold {
+  background-color: var(--gold);
+  color: #000;
+  border-color: var(--gold);
+}
+.btn-gold:hover {
+  background-color: #e5c200;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Картки ─── */
+.card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+/* ─── Inputs ─── */
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.input:focus {
+  border-color: var(--accent);
+}
+.input::placeholder {
+  color: #555;
+}
+
+/* ─── Неонове світіння ─── */
+.glow-accent {
+  box-shadow: 0 0 20px rgba(255, 69, 0, 0.3);
+}
+.glow-neon {
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+.glow-gold {
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+/* ─── Анімації ─── */
+@keyframes pulse-accent {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+@keyframes flicker {
+  0%, 95%, 100% { opacity: 1; }
+  96%, 99% { opacity: 0.8; }
+}
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.animate-pulse-accent {
+  animation: pulse-accent 2s ease-in-out infinite;
+}
+.animate-flicker {
+  animation: flicker 3s ease-in-out infinite;
+}
+
+/* ─── XP Бар ─── */
+.xp-bar {
+  height: 6px;
+  background-color: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.xp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon), #00cc6a);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+/* ─── Нижня навігація ─── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background-color: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: stretch;
+  height: 56px;
+}
+
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #555;
+  cursor: pointer;
+  transition: color 0.2s;
+  min-height: 44px;
+}
+.bottom-nav-item.active {
+  color: var(--accent);
+}
+.bottom-nav-item:hover:not(.active) {
+  color: var(--text);
+}
+
+/* ─── Лор-банер ─── */
+.lore-banner {
+  background: linear-gradient(135deg, #0f0f1a 0%, #12121e 100%);
+  border-left: 3px solid var(--accent);
+  padding: 0.75rem 1rem;
+  font-style: italic;
+  font-size: 0.85rem;
+  color: #888;
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+
+/* ─── Ресурс-бейдж ─── */
+.resource-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background-color: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
