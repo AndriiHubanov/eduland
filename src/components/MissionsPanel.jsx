@@ -219,6 +219,12 @@ function MissionCard({ mission, onClaim }) {
             {mission.diamondReward > 0 && (
               <span className="text-xs font-mono text-[#b9f2ff]">💠 +{mission.diamondReward}</span>
             )}
+            {mission.rpReward > 0 && (
+              <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded border border-[rgba(185,242,255,0.3)] bg-[rgba(185,242,255,0.06)]"
+                style={{ color: '#b9f2ff' }}>
+                🧪 +{mission.rpReward} RP
+              </span>
+            )}
           </div>
 
           {/* Лор-текст для сюжетних (тільки завершені) */}

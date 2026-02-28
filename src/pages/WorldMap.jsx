@@ -209,36 +209,56 @@ export default function WorldMap() {
     <div className="fixed inset-0 bg-[var(--bg)] flex flex-col" style={{ paddingBottom: 56 }}>
 
       {/* Заголовок */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)] shrink-0">
-        <div>
-          <span className="font-bebas text-lg tracking-widest text-white">КАРТА ПОЛІВ</span>
-          <span className="text-xs text-[#444] ml-2 font-mono">{player?.group}</span>
+      <div className="px-3 pt-2 pb-1.5 border-b border-[var(--border)] shrink-0">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="font-bebas text-lg tracking-widest text-white">КАРТА ПОЛІВ</span>
+            <span className="text-[10px] text-[#333] font-mono">{player?.group}</span>
+          </div>
+          <button
+            onClick={() => { setShowLb(true); setSelected(null) }}
+            className="text-xs bg-[rgba(255,215,0,0.1)] border border-[rgba(255,215,0,0.2)] text-[var(--gold)] rounded px-2 py-1 font-mono hover:bg-[rgba(255,215,0,0.18)] transition-colors"
+          >
+            🏆 Рейтинг
+          </button>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5 text-[10px] font-mono">
-            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--neon)]">
-              ⚡{stats.resource}
-            </span>
-            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--gold)]">
-              🏚️{stats.ruin}
-            </span>
+
+        {/* Ресурси гравця + статистика полів */}
+        <div className="flex items-center justify-between">
+          {/* Топ ресурси */}
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { icon: '🪙', val: player?.resources?.gold,   color: '#ffd700' },
+              { icon: '💾', val: player?.resources?.bits,   color: '#00aaff' },
+              { icon: '⚡', val: player?.resources?.energy, color: '#ffaa00' },
+              { icon: '🧬', val: player?.resources?.bio,    color: '#00ff88' },
+            ].filter(r => r.val > 0).map((r, i) => (
+              <span key={i} className="text-[10px] font-mono" style={{ color: r.color }}>
+                {r.icon} {r.val}
+              </span>
+            ))}
+            {(player?.researchPoints || 0) > 0 && (
+              <span className="text-[10px] font-mono" style={{ color: '#b9f2ff' }}>🧪 {player.researchPoints}</span>
+            )}
+          </div>
+
+          {/* Статистика полів + місії */}
+          <div className="flex gap-1.5 text-[10px] font-mono shrink-0">
+            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5"
+              style={{ color: '#00cc88' }}>⛏️{stats.resource}</span>
+            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5"
+              style={{ color: '#cc4400' }}>🏚️{stats.ruin}</span>
             {stats.myReady > 0 && (
-              <span className="bg-[rgba(0,255,136,0.15)] border border-[var(--neon)] rounded px-1.5 py-0.5 text-[var(--neon)] animate-pulse">
+              <span className="bg-[rgba(0,255,136,0.12)] border border-[rgba(0,255,136,0.4)] rounded px-1.5 py-0.5 text-[var(--neon)] animate-pulse">
                 ✅{stats.myReady}
               </span>
             )}
             {stats.myActive > 0 && (
-              <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[#666]">
+              <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[#555]">
                 ⏳{stats.myActive}
               </span>
             )}
           </div>
-          <button
-            onClick={() => { setShowLb(true); setSelected(null) }}
-            className="text-sm bg-[rgba(255,215,0,0.1)] border border-[rgba(255,215,0,0.25)] text-[var(--gold)] rounded px-2 py-1 font-mono"
-          >
-            🏆
-          </button>
         </div>
       </div>
 
@@ -342,98 +362,143 @@ export default function WorldMap() {
 }
 
 // ─── Тайл поля ───────────────────────────────────────────────
+// Tier кольори для градієнтів
+const TIER_GRADIENTS = {
+  1: { from: 'rgba(0,0,0,0)', glow: 0.05 },
+  2: { from: 'rgba(255,215,0,0.04)', glow: 0.08 },
+  3: { from: 'rgba(255,215,0,0.10)', glow: 0.14 },
+}
+
 function FieldTile({ field, myExp, otherExp, currentPlayerId, tick, onClick }) {
   const visual     = getFieldVisual(field)
   const tier       = field.tier ? FIELD_TIERS[field.tier] : null
   const timeLeft   = getFieldTimeLeft(field)
   const isRuinDead = field.type === 'ruin' && field.ruinHP <= 0
+  const tierGrad   = TIER_GRADIENTS[field.tier] || TIER_GRADIENTS[1]
+  const rgb        = hexToRgb(visual.color)
 
   // Стан місії
   const hasMyExp    = Boolean(myExp)
   const hasOtherExp = Boolean(otherExp) && !hasMyExp
   const isReady     = myExp?.status === 'ready'
 
-  // Таймер місії
+  // Таймер місії + прогрес
   let expCountdown = null
+  let expProgress  = 0
   if (myExp?.status === 'active') {
-    const endsAt = myExp.endsAt?.toDate ? myExp.endsAt.toDate() : new Date(myExp.endsAt)
-    expCountdown = formatCountdown(endsAt - Date.now())
+    const endsAt    = myExp.endsAt?.toDate    ? myExp.endsAt.toDate()    : new Date(myExp.endsAt)
+    const createdAt = myExp.createdAt?.toDate ? myExp.createdAt.toDate() : new Date(myExp.createdAt)
+    const total     = endsAt - createdAt
+    const elapsed   = Date.now() - createdAt
+    expProgress     = Math.min(100, Math.round(elapsed / total * 100))
+    expCountdown    = formatCountdown(endsAt - Date.now())
   }
 
-  const expIcon = {
-    scout:   '🔭',
-    extract: '⛏️',
-    attack:  '⚔️',
-  }[myExp?.type] || ''
+  const expIcon = { scout: '🔭', extract: '⛏️', attack: '⚔️' }[myExp?.type] || ''
 
   // Колір рамки
   const borderColor = isReady
     ? 'var(--neon)'
     : hasMyExp
       ? 'var(--accent)'
-      : field.type !== 'neutral'
-        ? `${visual.color}44`
-        : 'var(--border)'
+      : field.type === 'ruin' && !isRuinDead
+        ? `rgba(${rgb},0.35)`
+        : field.type !== 'neutral'
+          ? `rgba(${rgb},0.28)`
+          : 'var(--border)'
+
+  // Фон тайла
+  const tileBackground = isReady
+    ? 'rgba(0,255,136,0.07)'
+    : isRuinDead
+      ? 'var(--bg2)'
+      : field.type === 'resource'
+        ? `linear-gradient(160deg, rgba(${rgb},${tierGrad.glow}) 0%, rgba(${rgb},0.02) 100%)`
+        : field.type === 'ruin'
+          ? `linear-gradient(160deg, rgba(${rgb},${tierGrad.glow * 0.9}) 0%, rgba(${rgb},0.02) 100%)`
+          : 'var(--bg2)'
+
+  // CSS-клас для tier glow
+  const tierClass = !isRuinDead && field.tier === 3 ? 'field-tier-3' : field.tier === 2 ? 'field-tier-2' : ''
 
   return (
     <button
       onClick={onClick}
-      className="relative flex flex-col items-center justify-between rounded-lg border p-2 text-center transition-all duration-150 active:scale-95 hover:border-[var(--accent)]"
+      className={`relative flex flex-col items-center justify-between rounded-lg border p-2 text-center transition-all duration-150 active:scale-95 hover:brightness-110 ${
+        field.type === 'ruin' && !isRuinDead && !hasMyExp && !isReady ? 'animate-ruin-pulse' : ''
+      } ${isReady ? 'animate-neon-pulse' : ''} ${tierClass}`}
       style={{
-        background: isReady
-          ? 'rgba(0,255,136,0.05)'
-          : isRuinDead ? 'var(--bg2)'
-          : field.type === 'resource' ? `rgba(${hexToRgb(visual.color)},0.06)`
-          : field.type === 'ruin'     ? `rgba(${hexToRgb(visual.color)},0.05)`
-          : 'var(--bg2)',
+        background: tileBackground,
         borderColor,
-        minHeight: 82,
+        minHeight: 84,
       }}
     >
+      {/* Tier badge в лівому куті */}
+      {tier && (
+        <div className="absolute top-1 left-1 text-[7px] font-mono font-bold leading-none px-0.5 py-px rounded"
+          style={{ color: tier.color, background: `${tier.color}22` }}>
+          {tier.label}
+        </div>
+      )}
+
       {/* Іконка */}
-      <span className="text-[28px] leading-none" style={{ opacity: isRuinDead ? 0.25 : 1 }}>
+      <span
+        className="text-[26px] leading-none mt-2"
+        style={{
+          opacity: isRuinDead ? 0.2 : 1,
+          filter: field.tier === 3 && !isRuinDead ? `drop-shadow(0 0 4px rgba(${rgb},0.6))` : 'none',
+        }}
+      >
         {visual.icon}
       </span>
 
-      {/* Назва + тир */}
-      <div className="mt-1 w-full space-y-0.5">
-        {tier && <div className="text-[9px] font-mono font-bold" style={{ color: tier.color }}>{tier.label}</div>}
-        <div className="text-[9px] font-mono leading-tight text-[#555] truncate px-0.5">{truncate(visual.name, 11)}</div>
+      {/* Назва */}
+      <div className="mt-0.5 w-full">
+        <div className="text-[8px] font-mono leading-tight text-[#555] truncate px-0.5">{truncate(visual.name, 12)}</div>
       </div>
 
-      {/* Таймер поля або таймер місії */}
-      {isReady ? (
-        <div className="text-[9px] font-mono text-[var(--neon)] mt-0.5 animate-pulse">{expIcon} Готово!</div>
-      ) : hasMyExp ? (
-        <div className="text-[9px] font-mono text-[var(--accent)] mt-0.5">{expIcon} {expCountdown}</div>
-      ) : timeLeft ? (
-        <div className="text-[8px] font-mono text-[#3a3a4a] mt-0.5">⏱ {timeLeft}</div>
-      ) : null}
+      {/* Статус місії / таймер поля */}
+      <div className="mt-0.5 h-[13px] flex items-center justify-center">
+        {isReady ? (
+          <span className="text-[8px] font-mono text-[var(--neon)] animate-pulse">{expIcon} Готово!</span>
+        ) : hasMyExp ? (
+          <span className="text-[8px] font-mono text-[var(--accent)]">{expIcon} {expCountdown}</span>
+        ) : timeLeft ? (
+          <span className="text-[7px] font-mono text-[#333]">⏱ {timeLeft}</span>
+        ) : (
+          <span className="text-[7px] font-mono text-[#2a2a3a]">вільне</span>
+        )}
+      </div>
 
-      {/* Маркер готової місії */}
+      {/* Dot маркер — правий верхній кут */}
       {isReady && (
-        <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[var(--neon)] animate-pulse" />
+        <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[var(--neon)] animate-pulse shadow-[0_0_6px_var(--neon)]" />
       )}
-      {/* Маркер активної місії (мій) */}
       {hasMyExp && !isReady && (
         <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
       )}
-      {/* Маркер чужої місії */}
       {hasOtherExp && !hasMyExp && (
         <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#444]" />
       )}
 
+      {/* Прогрес-бар місії (якщо active) */}
+      {hasMyExp && !isReady && (
+        <div className="field-progress">
+          <div className="field-progress-fill" style={{ width: `${expProgress}%`, background: 'var(--accent)' }} />
+        </div>
+      )}
+
       {/* HP bar руїни */}
-      {field.type === 'ruin' && !isRuinDead && field.ruinHP !== null && (
-        <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b overflow-hidden">
-          <div className="h-full" style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color, opacity: 0.7 }} />
+      {field.type === 'ruin' && !isRuinDead && !hasMyExp && field.ruinHP !== null && (
+        <div className="field-progress">
+          <div className="field-progress-fill" style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color, opacity: 0.7 }} />
         </div>
       )}
 
       {/* Знищено overlay */}
       {isRuinDead && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-lg">
-          <span className="text-[9px] font-mono text-[#333]">знищено</span>
+        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-[rgba(0,0,0,0.4)]">
+          <span className="text-[8px] font-mono text-[#333] tracking-widest uppercase">знищено</span>
         </div>
       )}
     </button>

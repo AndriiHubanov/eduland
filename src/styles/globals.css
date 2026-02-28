@@ -276,3 +276,47 @@ body {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* ─── Поле: тири ─── */
+.field-tier-1 {
+  box-shadow: none;
+}
+.field-tier-2 {
+  box-shadow: inset 0 0 12px rgba(255,215,0,0.06);
+}
+.field-tier-3 {
+  box-shadow: inset 0 0 20px rgba(255,215,0,0.12), 0 0 8px rgba(255,215,0,0.12);
+}
+
+/* ─── Тост ─── */
+.toast-enter {
+  animation: slide-down 0.22s ease-out;
+}
+
+/* ─── Шиммер (скелетон) ─── */
+.shimmer-bg {
+  background: linear-gradient(90deg,
+    var(--bg3) 25%,
+    var(--border) 50%,
+    var(--bg3) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* ─── Прогрес-бар поля (міні) ─── */
+.field-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border);
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+.field-progress-fill {
+  height: 100%;
+  transition: width 1s linear;
+  border-radius: 0 0 8px 8px;
+}
