@@ -11,12 +11,16 @@ import {
 import { upgradeCastle } from '../firebase/castleService'
 import { recruitUnit, upgradeUnit, setFormation } from '../firebase/unitService'
 import {
+  subscribePlayerMissions, initPlayerMissions, updateMissionProgress, claimMissionReward,
+} from '../firebase/missionService'
+import {
   ResourceBar, XPBar, Spinner, ErrorMsg, SuccessMsg, Button, Card, BottomNav
 } from '../components/UI'
-import BuildingCard from '../components/BuildingCard'
-import MiningGrid   from '../components/MiningGrid'
-import CastlePanel  from '../components/CastlePanel'
-import UnitsPanel   from '../components/UnitsPanel'
+import BuildingCard    from '../components/BuildingCard'
+import MiningGrid      from '../components/MiningGrid'
+import CastlePanel     from '../components/CastlePanel'
+import UnitsPanel      from '../components/UnitsPanel'
+import MissionsPanel   from '../components/MissionsPanel'
 
 const NAV_ITEMS = [
   { id: 'city',   icon: '🏙️', label: 'Місто'   },
@@ -35,6 +39,8 @@ export default function City() {
   const [feedback, setFeedback]     = useState({ type: '', text: '' })
   const [showLogout, setShowLogout] = useState(false)
   const [levelUp, setLevelUp]       = useState(null) // { level } або null
+  const [missions, setMissions]     = useState([])
+  const [showMissions, setShowMissions] = useState(false)
 
   // Прапорець — виробництво нараховується тільки один раз за сесію
   const hasAccrued   = useRef(false)
@@ -59,6 +65,19 @@ export default function City() {
       setPlayer(data)
       // Ініціалізуємо resourceMap для існуючих гравців (один раз)
       if (!data.resourceMap) ensureResourceMap(data.id)
+    })
+    return () => unsub()
+  }, [playerId])
+
+  // ─── 2b. Підписка на місії + ініціалізація ─────────────────
+  useEffect(() => {
+    if (!playerId) return
+    const unsub = subscribePlayerMissions(playerId, (data) => {
+      setMissions(data)
+      // Якщо місій немає — ініціалізуємо (новий гравець)
+      if (data.length === 0) {
+        initPlayerMissions(playerId).catch(console.error)
+      }
     })
     return () => unsub()
   }, [playerId])
@@ -184,6 +203,11 @@ export default function City() {
         resources: newResources,
       })
       showFeedback('success', `${bConfig.name} → Рівень ${currentLevel + 1} ✓`)
+      // Прогрес місій: будівля / сюжетні
+      updateMissionProgress(player.id, 'upgrade_building', {
+        target: buildingId,
+        level: currentLevel + 1,
+      }).catch(console.error)
     } catch {
       showFeedback('error', 'Помилка апгрейду')
     }
@@ -225,6 +249,7 @@ export default function City() {
     try {
       await startResearch(player.id, cellIndex)
       showFeedback('success', 'Лабораторія вирушила досліджувати ділянку!')
+      updateMissionProgress(player.id, 'start_research').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -243,6 +268,7 @@ export default function City() {
     try {
       await buildMine(player.id, cellIndex)
       showFeedback('success', 'Копальню побудовано! Вона вже починає видобуток.')
+      updateMissionProgress(player.id, 'build_mine').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -253,6 +279,7 @@ export default function City() {
       const { resource, amount } = await collectMine(player.id, cellIndex)
       const info = RESOURCE_ICONS[resource]
       showFeedback('success', `Зібрано: ${info?.icon || ''} +${amount} ${info?.name || resource}`)
+      updateMissionProgress(player.id, 'collect_mine').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -288,8 +315,10 @@ export default function City() {
   // ─── Замок ──────────────────────────────────────────────────
   async function handleCastleUpgrade() {
     try {
+      const castleLevel = (player.castleLevel || 0) + 1
       await upgradeCastle(player.id)
       showFeedback('success', 'Замок покращено!')
+      updateMissionProgress(player.id, 'upgrade_castle', { level: castleLevel }).catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -300,6 +329,7 @@ export default function City() {
     try {
       await recruitUnit(player.id, unitId)
       showFeedback('success', 'Юніта найнято!')
+      updateMissionProgress(player.id, 'recruit_unit').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -358,14 +388,33 @@ export default function City() {
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className="text-xs text-[#555]">{player.group}</div>
-            <button
-              onClick={() => setShowLogout(true)}
-              className="text-[10px] uppercase tracking-wider text-[#333] hover:text-[var(--accent)] transition-colors"
-            >
-              вийти
-            </button>
+          <div className="flex items-center gap-3">
+            {/* Кнопка місій з бейджем */}
+            {(() => {
+              const ready = missions.filter(m => m.status === 'completed').length
+              return (
+                <button
+                  onClick={() => setShowMissions(true)}
+                  className="relative flex items-center gap-1 text-xs bg-[rgba(0,255,136,0.1)] border border-[rgba(0,255,136,0.25)] text-[var(--neon)] rounded px-2 py-1 font-mono hover:bg-[rgba(0,255,136,0.2)] transition-colors"
+                >
+                  📋
+                  {ready > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[var(--accent)] text-white text-[9px] flex items-center justify-center font-bold">
+                      {ready}
+                    </span>
+                  )}
+                </button>
+              )
+            })()}
+            <div className="flex flex-col items-end gap-1">
+              <div className="text-xs text-[#555]">{player.group}</div>
+              <button
+                onClick={() => setShowLogout(true)}
+                className="text-[10px] uppercase tracking-wider text-[#333] hover:text-[var(--accent)] transition-colors"
+              >
+                вийти
+              </button>
+            </div>
           </div>
         </div>
         <ResourceBar resources={player.resources} diamonds={player.diamonds} />
@@ -431,6 +480,22 @@ export default function City() {
           heroClass={heroClass}
           heroName={player.heroName}
           onClose={() => setLevelUp(null)}
+        />
+      )}
+
+      {/* ─── Панель місій ─── */}
+      {showMissions && (
+        <MissionsPanel
+          missions={missions}
+          onClaim={async (docId) => {
+            try {
+              await claimMissionReward(playerId, docId)
+              showFeedback('success', 'Нагороду отримано!')
+            } catch (err) {
+              showFeedback('error', err.message)
+            }
+          }}
+          onClose={() => setShowMissions(false)}
         />
       )}
 
