@@ -6,7 +6,7 @@ import {
   addDoc, query, where, onSnapshot, serverTimestamp,
   runTransaction, writeBatch,
 } from 'firebase/firestore'
-import { db } from './config'
+import { db, isFirebaseConfigured } from './config'
 
 // ─── Константи ───────────────────────────────────────────────
 
@@ -18,6 +18,7 @@ export const normalizeName = (name) =>
 
 // Перевірка і створення стартових даних
 export async function initializeFirebaseData() {
+  if (!isFirebaseConfigured) return
   try {
     const disciplineRef = doc(db, 'config/disciplines/disciplines', 'informatics')
     const disciplineSnap = await getDoc(disciplineRef)
@@ -28,7 +29,8 @@ export async function initializeFirebaseData() {
       console.log('Стартові дані створено!')
     }
   } catch (err) {
-    console.error('Помилка ініціалізації:', err)
+    // Мовчазна помилка — не блокує роботу додатку
+    console.warn('Firebase ініціалізація пропущена:', err.message)
   }
 }
 

@@ -14,6 +14,18 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
+// Перевірка наявності конфігурації
+export const isFirebaseConfigured = Boolean(
+  firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId
+)
+
+if (!isFirebaseConfigured) {
+  console.warn(
+    '[Firebase] Змінні оточення не знайдені. ' +
+    'Перевірте .env файл локально або GitHub Secrets у налаштуваннях репозиторію.'
+  )
+}
+
 // Ініціалізація Firebase
 const app = initializeApp(firebaseConfig)
 

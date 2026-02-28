@@ -86,7 +86,11 @@ export default function HeroCreate() {
       navigate('/city')
     } catch (err) {
       console.error(err)
-      setError('Помилка створення героя. Спробуй ще раз.')
+      if (err?.message?.includes('offline') || err?.code === 'unavailable') {
+        setError('Немає з\'єднання з сервером. Перевір інтернет і спробуй ще раз.')
+      } else {
+        setError('Помилка створення героя. Спробуй ще раз.')
+      }
     } finally {
       setLoading(false)
     }
