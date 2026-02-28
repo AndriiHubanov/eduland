@@ -1,12 +1,18 @@
-// ─── WorldMap — Фаза 9: 31 поле з 48г рефрешем ───
+// ─── WorldMap — Фаза 10: Місії на поля з таймерами ───
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useGameStore, { HERO_CLASSES, getHeroLevel } from '../store/gameStore'
 import { subscribeGroupPlayers } from '../firebase/service'
-import { subscribeGroupFields, extractFieldResources, attackFieldRuin, getFieldTimeLeft } from '../firebase/fieldService'
+import { subscribeGroupFields, getFieldTimeLeft } from '../firebase/fieldService'
+import {
+  subscribePlayerExpeditions, subscribeGroupExpeditions,
+  startExpedition, resolveExpeditionIfReady, claimExpedition,
+  forceRefreshField,
+} from '../firebase/expeditionService'
 import { RUINS } from '../firebase/ruinService'
 import { getFieldVisual, FIELD_TIERS } from '../config/fields'
+import { LAB_BUILDINGS, formatCountdown } from '../config/labs'
 import { Spinner, BottomNav } from '../components/UI'
 import BattleScreen from '../components/BattleScreen'
 import { UNITS, getUnitStats } from '../firebase/unitService'
@@ -19,88 +25,101 @@ const NAV_ITEMS = [
   { id: 'trade',  icon: '🔄', label: 'Торгівля' },
 ]
 
-// ─── Шанс перемоги проти руїни ────────────────────────────────
-function calcWinChance(player, ruinTier) {
-  const ruinConfig = RUINS[`tier${ruinTier}`]
-  if (!player || !ruinConfig) return null
-  const formation = player.army?.formation || []
-  if (formation.length === 0) return null
-
-  function armyRating(armyData, heroClass, isRuin = false) {
-    let total = 0
-    for (const slot of armyData) {
-      const unit = UNITS[slot.unitId]
-      if (!unit) continue
-      const stats = getUnitStats(slot.unitId, slot.level || 1, heroClass)
-      if (!stats) continue
-      const siegeMult = isRuin && slot.unitId === 'siege_mech' ? 1.5 : 1
-      total += (stats.atk * siegeMult + stats.def + stats.hp * 0.1) * (slot.count || 1)
-    }
-    return total
-  }
-
-  const attackerArmy = formation.map(unitId => ({
-    unitId,
-    count: player.units?.[unitId]?.count || 0,
-    level: player.units?.[unitId]?.level || 1,
-  })).filter(u => u.count > 0)
-
-  const atkRating = armyRating(attackerArmy, player.heroClass, true)
-  const defRating = armyRating(ruinConfig.enemyArmy, null)
-
-  if (atkRating === 0) return 0
-  if (defRating === 0) return 100
-
-  const ratio = atkRating / defRating
-  const chance = Math.round(100 / (1 + Math.exp(-2.5 * (ratio - 1))))
-  return Math.max(5, Math.min(95, chance))
-}
-
-// ─── Фільтри ─────────────────────────────────────────────────
 const FILTERS = [
   { id: 'all',       label: 'Всі'        },
   { id: 'resource',  label: '⚡ Ресурси'  },
   { id: 'ruin',      label: '🏚️ Руїни'   },
   { id: 'available', label: '✅ Вільні'  },
+  { id: 'mine',      label: '📌 Мої'     },
 ]
 
-// ─── Головний компонент ───────────────────────────────────────
+// ─── Шанс перемоги ───────────────────────────────────────────
+function calcWinChance(player, ruinTier) {
+  const ruinConfig = RUINS[`tier${ruinTier}`]
+  if (!player || !ruinConfig) return null
+  const formation = player.army?.formation || []
+  if (!formation.length) return null
+
+  function rating(army, heroClass, siege = false) {
+    let t = 0
+    for (const s of army) {
+      const unit = UNITS[s.unitId]
+      if (!unit) continue
+      const stats = getUnitStats(s.unitId, s.level || 1, heroClass)
+      if (!stats) continue
+      const sm = siege && s.unitId === 'siege_mech' ? 1.5 : 1
+      t += (stats.atk * sm + stats.def + stats.hp * 0.1) * (s.count || 1)
+    }
+    return t
+  }
+
+  const atk = formation.map(id => ({
+    unitId: id,
+    count: player.units?.[id]?.count || 0,
+    level: player.units?.[id]?.level || 1,
+  })).filter(u => u.count > 0)
+
+  const atkR = rating(atk, player.heroClass, true)
+  const defR = rating(ruinConfig.enemyArmy, null)
+  if (atkR === 0) return 0
+  if (defR === 0) return 100
+  const chance = Math.round(100 / (1 + Math.exp(-2.5 * (atkR / defR - 1))))
+  return Math.max(5, Math.min(95, chance))
+}
+
+// ─── Компонент ───────────────────────────────────────────────
 export default function WorldMap() {
   const navigate = useNavigate()
   const { player, unreadMessages } = useGameStore()
 
-  const [fields, setFields]     = useState([])
-  const [players, setPlayers]   = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [filter, setFilter]     = useState('all')
-  const [selected, setSelected] = useState(null)
-  const [showLb, setShowLb]     = useState(false)
-  const [action, setAction]     = useState(null)
-  const [battle, setBattle]     = useState(null)
-  const [toast, setToast]       = useState(null)
+  const [fields, setFields]       = useState([])
+  const [players, setPlayers]     = useState([])
+  const [myExps, setMyExps]       = useState([])    // місії поточного гравця
+  const [groupExps, setGroupExps] = useState([])   // всі місії групи (для відображення на тайлах)
+  const [loading, setLoading]     = useState(true)
+  const [filter, setFilter]       = useState('all')
+  const [selected, setSelected]   = useState(null)
+  const [showLb, setShowLb]       = useState(false)
+  const [action, setAction]       = useState(null)
+  const [battle, setBattle]       = useState(null)
+  const [toast, setToast]         = useState(null)
+  const [tick, setTick]           = useState(0)     // для оновлення таймерів
 
+  const tickRef = useRef(null)
+
+  // Таймер — оновлюємо UI кожну секунду
   useEffect(() => {
-    if (!player?.group) return
-    const unsub = subscribeGroupFields(player.group, (data) => {
-      setFields(data)
-      setLoading(false)
+    tickRef.current = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(tickRef.current)
+  }, [])
+
+  // Авто-resolve готових місій
+  useEffect(() => {
+    if (!player?.id) return
+    myExps.forEach(exp => {
+      if (exp.status === 'active') {
+        const endsAt = exp.endsAt?.toDate ? exp.endsAt.toDate() : new Date(exp.endsAt)
+        if (endsAt <= new Date()) {
+          resolveExpeditionIfReady(player.id, exp.id).catch(console.error)
+        }
+      }
     })
-    return () => unsub()
-  }, [player?.group])
+  }, [tick, myExps, player?.id])
 
   useEffect(() => {
     if (!player?.group) return
-    const unsub = subscribeGroupPlayers(player.group, setPlayers)
-    return () => unsub()
-  }, [player?.group])
+    const u1 = subscribeGroupFields(player.group, d => { setFields(d); setLoading(false) })
+    const u2 = subscribeGroupPlayers(player.group, setPlayers)
+    const u3 = subscribePlayerExpeditions(player.id, setMyExps)
+    const u4 = subscribeGroupExpeditions(player.group, setGroupExps)
+    return () => { u1(); u2(); u3(); u4() }
+  }, [player?.group, player?.id])
 
-  useEffect(() => {
-    if (!player) navigate('/')
-  }, [player])
+  useEffect(() => { if (!player) navigate('/') }, [player])
 
   const showToast = useCallback((type, text) => {
     setToast({ type, text })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }, [])
 
   function handleNavChange(tabId) {
@@ -108,13 +127,24 @@ export default function WorldMap() {
     if (routes[tabId]) navigate(routes[tabId])
   }
 
-  async function handleExtract(field) {
+  // Знайти місію гравця для поля
+  function getMyExpForField(fieldId) {
+    return myExps.find(e => e.fieldId === fieldId) || null
+  }
+
+  // Зайнятість поля іншим гравцем
+  function getOtherExpForField(fieldId) {
+    return groupExps.find(e => e.fieldId === fieldId && e.playerId !== player?.id) || null
+  }
+
+  async function handleStartExp(fieldId, type) {
     if (action) return
-    setAction('extracting')
+    setAction(type)
     try {
-      const result = await extractFieldResources(player.id, field.id)
+      await startExpedition(player.id, fieldId, type)
       setSelected(null)
-      showToast('neon', `+${result.amount} ${result.resource}`)
+      const labels = { scout: 'Розвідка', extract: 'Видобуток', attack: 'Штурм' }
+      showToast('neon', `${labels[type]} розпочато!`)
     } catch (err) {
       showToast('accent', err.message)
     } finally {
@@ -122,13 +152,35 @@ export default function WorldMap() {
     }
   }
 
-  async function handleAttack(field) {
+  async function handleClaim(expId) {
     if (action) return
-    setAction('attacking')
+    setAction('claim')
     try {
-      const data = await attackFieldRuin(player.id, field.id)
+      const res = await claimExpedition(player.id, expId)
       setSelected(null)
-      setBattle({ field, data })
+      if (res.type === 'extract' && res.result?.amount > 0) {
+        showToast('neon', `+${res.result.amount} ${res.result.resource}`)
+      } else if (res.type === 'attack') {
+        if (res.result?.won) showToast('neon', `⚔️ Перемога! +${res.result.xp} XP`)
+        else showToast('accent', '⚔️ Поразка — противник відстояв руїну')
+        if (res.result?.won) setBattle({ result: res.result })
+      } else if (res.type === 'scout') {
+        showToast('neon', '🔭 Поле досліджено!')
+      }
+    } catch (err) {
+      showToast('accent', err.message)
+    } finally {
+      setAction(null)
+    }
+  }
+
+  async function handleForceRefresh(fieldId) {
+    if (action) return
+    setAction('refresh')
+    try {
+      await forceRefreshField(player.id, fieldId)
+      setSelected(null)
+      showToast('neon', '📡 Поле примусово оновлено!')
     } catch (err) {
       showToast('accent', err.message)
     } finally {
@@ -141,14 +193,16 @@ export default function WorldMap() {
   const visibleFields = fields.filter(f => {
     if (filter === 'resource')  return f.type === 'resource'
     if (filter === 'ruin')      return f.type === 'ruin'
-    if (filter === 'available') return !f.lastOccupiedBy || f.lastOccupiedBy === player?.id
+    if (filter === 'available') return !getMyExpForField(f.id) && !getOtherExpForField(f.id)
+    if (filter === 'mine')      return !!getMyExpForField(f.id)
     return true
   })
 
   const stats = {
-    resource: fields.filter(f => f.type === 'resource').length,
-    ruin:     fields.filter(f => f.type === 'ruin').length,
-    free:     fields.filter(f => !f.lastOccupiedBy).length,
+    resource:  fields.filter(f => f.type === 'resource').length,
+    ruin:      fields.filter(f => f.type === 'ruin').length,
+    myActive:  myExps.filter(e => e.status === 'active').length,
+    myReady:   myExps.filter(e => e.status === 'ready').length,
   }
 
   return (
@@ -168,9 +222,16 @@ export default function WorldMap() {
             <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--gold)]">
               🏚️{stats.ruin}
             </span>
-            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[#555]">
-              ⬜{stats.free}
-            </span>
+            {stats.myReady > 0 && (
+              <span className="bg-[rgba(0,255,136,0.15)] border border-[var(--neon)] rounded px-1.5 py-0.5 text-[var(--neon)] animate-pulse">
+                ✅{stats.myReady}
+              </span>
+            )}
+            {stats.myActive > 0 && (
+              <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[#666]">
+                ⏳{stats.myActive}
+              </span>
+            )}
           </div>
           <button
             onClick={() => { setShowLb(true); setSelected(null) }}
@@ -184,48 +245,56 @@ export default function WorldMap() {
       {/* Фільтри */}
       <div className="flex gap-1.5 px-3 py-2 overflow-x-auto shrink-0" style={{ scrollbarWidth: 'none' }}>
         {FILTERS.map(f => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            className={`
-              whitespace-nowrap text-xs font-mono px-2.5 py-1 rounded border transition-colors
-              ${filter === f.id
+          <button key={f.id} onClick={() => setFilter(f.id)}
+            className={`whitespace-nowrap text-xs font-mono px-2.5 py-1 rounded border transition-colors ${
+              filter === f.id
                 ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
                 : 'bg-[var(--bg3)] border-[var(--border)] text-[#666] hover:border-[var(--accent)]'
-              }
-            `}
-          >
+            }`}>
             {f.label}
           </button>
         ))}
       </div>
 
-      {/* Сітка 31 поля */}
+      {/* Рядок готових місій */}
+      {stats.myReady > 0 && (
+        <div className="mx-3 mb-2 p-2.5 rounded-lg border border-[var(--neon)] bg-[rgba(0,255,136,0.06)] flex items-center justify-between shrink-0">
+          <div className="text-xs font-mono text-[var(--neon)]">
+            ✅ {stats.myReady} {stats.myReady === 1 ? 'місія готова' : 'місії готові'} — забери нагороду!
+          </div>
+          <button
+            className="text-xs font-mono text-[var(--neon)] underline"
+            onClick={() => setFilter('mine')}
+          >
+            Показати →
+          </button>
+        </div>
+      )}
+
+      {/* Сітка полів */}
       <div className="flex-1 overflow-y-auto px-3 pb-2">
         <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
           {visibleFields.map(field => (
             <FieldTile
               key={field.id}
               field={field}
+              myExp={getMyExpForField(field.id)}
+              otherExp={getOtherExpForField(field.id)}
               currentPlayerId={player?.id}
+              tick={tick}
               onClick={() => { setSelected(field); setShowLb(false) }}
             />
           ))}
         </div>
         {visibleFields.length === 0 && (
-          <div className="text-center py-12 text-[#444] text-sm font-mono">
-            Немає полів за фільтром
-          </div>
+          <div className="text-center py-12 text-[#444] text-sm font-mono">Немає полів за фільтром</div>
         )}
       </div>
 
       {/* Нижня навігація */}
       <div className="fixed bottom-0 left-0 right-0">
         <BottomNav
-          items={NAV_ITEMS.map(item => ({
-            ...item,
-            badge: item.id === 'inbox' ? unreadMessages : 0,
-          }))}
+          items={NAV_ITEMS.map(item => ({ ...item, badge: item.id === 'inbox' ? unreadMessages : 0 }))}
           active="map"
           onChange={handleNavChange}
         />
@@ -233,15 +302,11 @@ export default function WorldMap() {
 
       {/* Toast */}
       {toast && (
-        <div className={`
-          fixed top-16 left-1/2 -translate-x-1/2 z-50
-          px-4 py-2 rounded-xl text-sm font-mono font-semibold
-          border shadow-lg animate-slide-up
-          ${toast.type === 'neon'
+        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-sm font-mono font-semibold border shadow-lg animate-slide-up ${
+          toast.type === 'neon'
             ? 'bg-[rgba(0,255,136,0.15)] border-[var(--neon)] text-[var(--neon)]'
             : 'bg-[rgba(255,69,0,0.15)] border-[var(--accent)] text-[var(--accent)]'
-          }
-        `}>
+        }`}>
           {toast.text}
         </div>
       )}
@@ -251,62 +316,76 @@ export default function WorldMap() {
         <FieldDetailPanel
           field={selected}
           player={player}
+          myExp={getMyExpForField(selected.id)}
+          otherExp={getOtherExpForField(selected.id)}
           winChance={selected.type === 'ruin' ? calcWinChance(player, selected.tier) : null}
           action={action}
+          tick={tick}
           onClose={() => setSelected(null)}
-          onExtract={() => handleExtract(selected)}
-          onAttack={() => handleAttack(selected)}
+          onStartExp={handleStartExp}
+          onClaim={handleClaim}
+          onForceRefresh={handleForceRefresh}
         />
       )}
 
       {/* Рейтинг */}
       {showLb && (
-        <LeaderboardPanel
-          players={players}
-          currentPlayerId={player?.id}
-          onClose={() => setShowLb(false)}
-        />
+        <LeaderboardPanel players={players} currentPlayerId={player?.id} onClose={() => setShowLb(false)} />
       )}
 
       {/* Бойовий екран */}
       {battle && (
-        <BattleScreen
-          ruin={battle.field}
-          battleData={battle.data}
-          onClose={() => setBattle(null)}
-        />
+        <BattleScreen ruin={selected?.field} battleData={battle.result} onClose={() => setBattle(null)} />
       )}
     </div>
   )
 }
 
 // ─── Тайл поля ───────────────────────────────────────────────
-function FieldTile({ field, currentPlayerId, onClick }) {
-  const visual    = getFieldVisual(field)
-  const tier      = field.tier ? FIELD_TIERS[field.tier] : null
-  const timeLeft  = getFieldTimeLeft(field)
-  const isMine    = field.lastOccupiedBy === currentPlayerId
-  const isOccupied = Boolean(field.lastOccupiedBy) && !isMine
+function FieldTile({ field, myExp, otherExp, currentPlayerId, tick, onClick }) {
+  const visual     = getFieldVisual(field)
+  const tier       = field.tier ? FIELD_TIERS[field.tier] : null
+  const timeLeft   = getFieldTimeLeft(field)
   const isRuinDead = field.type === 'ruin' && field.ruinHP <= 0
 
-  const borderColor = isRuinDead
-    ? '#222'
-    : isMine ? 'var(--accent)'
-    : field.type !== 'neutral' ? `${visual.color}44`
-    : 'var(--border)'
+  // Стан місії
+  const hasMyExp    = Boolean(myExp)
+  const hasOtherExp = Boolean(otherExp) && !hasMyExp
+  const isReady     = myExp?.status === 'ready'
+
+  // Таймер місії
+  let expCountdown = null
+  if (myExp?.status === 'active') {
+    const endsAt = myExp.endsAt?.toDate ? myExp.endsAt.toDate() : new Date(myExp.endsAt)
+    expCountdown = formatCountdown(endsAt - Date.now())
+  }
+
+  const expIcon = {
+    scout:   '🔭',
+    extract: '⛏️',
+    attack:  '⚔️',
+  }[myExp?.type] || ''
+
+  // Колір рамки
+  const borderColor = isReady
+    ? 'var(--neon)'
+    : hasMyExp
+      ? 'var(--accent)'
+      : field.type !== 'neutral'
+        ? `${visual.color}44`
+        : 'var(--border)'
 
   return (
     <button
       onClick={onClick}
       className="relative flex flex-col items-center justify-between rounded-lg border p-2 text-center transition-all duration-150 active:scale-95 hover:border-[var(--accent)]"
       style={{
-        background: isRuinDead
-          ? 'var(--bg2)'
-          : field.type === 'resource'
-            ? `rgba(${hexToRgb(visual.color)},0.06)`
-            : field.type === 'ruin'
-              ? `rgba(${hexToRgb(visual.color)},0.05)`
-              : 'var(--bg2)',
+        background: isReady
+          ? 'rgba(0,255,136,0.05)'
+          : isRuinDead ? 'var(--bg2)'
+          : field.type === 'resource' ? `rgba(${hexToRgb(visual.color)},0.06)`
+          : field.type === 'ruin'     ? `rgba(${hexToRgb(visual.color)},0.05)`
+          : 'var(--bg2)',
         borderColor,
         minHeight: 82,
       }}
@@ -316,39 +395,38 @@ function FieldTile({ field, currentPlayerId, onClick }) {
         {visual.icon}
       </span>
 
-      {/* Назва */}
+      {/* Назва + тир */}
       <div className="mt-1 w-full space-y-0.5">
-        {tier && (
-          <div className="text-[9px] font-mono font-bold" style={{ color: tier.color }}>
-            {tier.label}
-          </div>
-        )}
-        <div className="text-[9px] font-mono leading-tight text-[#555] truncate px-0.5">
-          {truncate(visual.name, 11)}
-        </div>
+        {tier && <div className="text-[9px] font-mono font-bold" style={{ color: tier.color }}>{tier.label}</div>}
+        <div className="text-[9px] font-mono leading-tight text-[#555] truncate px-0.5">{truncate(visual.name, 11)}</div>
       </div>
 
-      {/* Таймер */}
-      {timeLeft && (
+      {/* Таймер поля або таймер місії */}
+      {isReady ? (
+        <div className="text-[9px] font-mono text-[var(--neon)] mt-0.5 animate-pulse">{expIcon} Готово!</div>
+      ) : hasMyExp ? (
+        <div className="text-[9px] font-mono text-[var(--accent)] mt-0.5">{expIcon} {expCountdown}</div>
+      ) : timeLeft ? (
         <div className="text-[8px] font-mono text-[#3a3a4a] mt-0.5">⏱ {timeLeft}</div>
-      )}
+      ) : null}
 
-      {/* Мій маркер */}
-      {isMine && !isRuinDead && (
-        <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+      {/* Маркер готової місії */}
+      {isReady && (
+        <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[var(--neon)] animate-pulse" />
       )}
-      {/* Зайнятий */}
-      {isOccupied && field.type === 'resource' && (
+      {/* Маркер активної місії (мій) */}
+      {hasMyExp && !isReady && (
+        <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+      )}
+      {/* Маркер чужої місії */}
+      {hasOtherExp && !hasMyExp && (
         <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#444]" />
       )}
 
-      {/* HP bar для руїн */}
+      {/* HP bar руїни */}
       {field.type === 'ruin' && !isRuinDead && field.ruinHP !== null && (
         <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b overflow-hidden">
-          <div
-            className="h-full"
-            style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color, opacity: 0.7 }}
-          />
+          <div className="h-full" style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color, opacity: 0.7 }} />
         </div>
       )}
 
@@ -362,30 +440,51 @@ function FieldTile({ field, currentPlayerId, onClick }) {
   )
 }
 
-// ─── Деталі поля ─────────────────────────────────────────────
-function FieldDetailPanel({ field, player, winChance, action, onClose, onExtract, onAttack }) {
+// ─── Деталі поля + управління місією ─────────────────────────
+function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, tick, onClose, onStartExp, onClaim, onForceRefresh }) {
   const visual     = getFieldVisual(field)
   const tier       = field.tier ? FIELD_TIERS[field.tier] : null
   const timeLeft   = getFieldTimeLeft(field)
   const ruinConfig = field.type === 'ruin' ? RUINS[`tier${field.tier}`] : null
-  const isMine     = field.lastOccupiedBy === player?.id
-  const isOccupied = Boolean(field.lastOccupiedBy) && !isMine
   const isRuinDead = field.type === 'ruin' && field.ruinHP <= 0
   const hasArmy    = (player?.army?.formation?.length || 0) > 0
+
+  // Рівні лабораторій
+  const labLevels = {
+    geolab:             player?.buildings?.geolab?.level              || 0,
+    extraction_station: player?.buildings?.extraction_station?.level  || 0,
+    assault_base:       player?.buildings?.assault_base?.level        || 0,
+    signal_tower:       player?.buildings?.signal_tower?.level        || 0,
+  }
+
+  // Таймер місії
+  let expCountdown = null
+  let expProgress  = 0
+  if (myExp?.status === 'active') {
+    const endsAt   = myExp.endsAt?.toDate ? myExp.endsAt.toDate() : new Date(myExp.endsAt)
+    const createdAt = myExp.createdAt?.toDate ? myExp.createdAt.toDate() : new Date(myExp.createdAt)
+    const total    = endsAt - createdAt
+    const elapsed  = Date.now() - createdAt
+    expProgress    = Math.min(100, Math.round(elapsed / total * 100))
+    expCountdown   = formatCountdown(endsAt - Date.now())
+  }
+
+  const expIcons = { scout: '🔭', extract: '⛏️', attack: '⚔️' }
+  const expNames = { scout: 'Розвідка', extract: 'Видобуток', attack: 'Штурм' }
+
+  // Todayʼs refreshes
+  const todayKey   = new Date().toISOString().split('T')[0]
+  const usedRefresh = player?.fieldRefreshesToday?.[todayKey] || 0
+  const maxRefresh  = labLevels.signal_tower
 
   return (
     <>
       <div className="fixed inset-0 z-30" onClick={onClose} />
       <div className="fixed bottom-[56px] left-0 right-0 z-40 animate-slide-up">
-        <div
-          className="mx-2 mb-2 rounded-xl border overflow-hidden"
-          style={{
-            background: 'rgba(12,12,20,0.98)',
-            backdropFilter: 'blur(16px)',
-            borderColor: `${visual.color}44`,
-          }}
-          onClick={e => e.stopPropagation()}
-        >
+        <div className="mx-2 mb-2 rounded-xl border overflow-hidden"
+          style={{ background: 'rgba(12,12,20,0.98)', backdropFilter: 'blur(16px)', borderColor: `${visual.color}44` }}
+          onClick={e => e.stopPropagation()}>
+
           {/* Шапка */}
           <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: `${visual.color}22` }}>
             <div className="flex items-center gap-2.5">
@@ -408,110 +507,195 @@ function FieldDetailPanel({ field, player, winChance, action, onClose, onExtract
 
           <div className="p-3 space-y-3">
 
-            {/* РЕСУРСНЕ */}
-            {field.type === 'resource' && (
-              <>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[#555]">Ресурс</span>
-                  <span style={{ color: visual.color }} className="font-mono">{visual.icon} {field.resourceType}</span>
-                </div>
-                {field.extractionBonus > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#555]">Бонус</span>
-                    <span className="text-[var(--neon)] font-mono">+{field.extractionBonus}%</span>
-                  </div>
-                )}
-                {isMine && (
-                  <div className="text-[10px] text-[var(--accent)] font-mono bg-[rgba(255,69,0,0.08)] rounded p-1.5">
-                    ✓ Вже видобував в поточному циклі
-                  </div>
-                )}
-                {isOccupied && (
-                  <div className="text-[10px] text-[#555] font-mono bg-[var(--bg3)] rounded p-1.5">
-                    ⚠ Зайнято іншим гравцем
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* РУЇНА */}
-            {field.type === 'ruin' && ruinConfig && (
-              <>
-                {!isRuinDead && (
-                  <div>
-                    <div className="flex items-center justify-between text-xs font-mono mb-1">
-                      <span className="text-[#555]">HP руїни</span>
-                      <span style={{ color: visual.color }}>{field.ruinHP ?? 100}%</span>
-                    </div>
-                    <div className="h-2 bg-[var(--bg)] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color }} />
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-[10px] text-[#444] uppercase tracking-wider mb-1.5">Охорона</p>
-                  <div className="flex flex-wrap gap-1">
-                    {ruinConfig.enemyArmy?.map((u, i) => {
-                      const unit = UNITS[u.unitId]
-                      return (
-                        <span key={i} className="text-[10px] bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 font-mono">
-                          {unit?.icon} ×{u.count} рів.{u.level}
-                        </span>
-                      )
-                    })}
-                  </div>
+            {/* ═══ Активна місія ═══ */}
+            {myExp && (
+              <div className="rounded-lg border p-3 space-y-2"
+                style={{
+                  borderColor: myExp.status === 'ready' ? 'var(--neon)' : 'var(--accent)',
+                  background:  myExp.status === 'ready' ? 'rgba(0,255,136,0.05)' : 'rgba(255,69,0,0.05)',
+                }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-white">
+                    {expIcons[myExp.type]} {expNames[myExp.type]}
+                  </span>
+                  <span className={`text-xs font-mono ${myExp.status === 'ready' ? 'text-[var(--neon)]' : 'text-[var(--accent)]'}`}>
+                    {myExp.status === 'ready' ? '✅ ГОТОВО' : `⏳ ${expCountdown}`}
+                  </span>
                 </div>
 
-                {hasArmy && winChance !== null && !isRuinDead && (
+                {myExp.status === 'active' && (
                   <div>
-                    <div className="flex items-center justify-between text-xs font-mono mb-1">
-                      <span className="text-[#555]">Шанс перемоги</span>
-                      <span style={{ color: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)' }}>
-                        {winChance}%
-                      </span>
-                    </div>
                     <div className="h-1.5 bg-[var(--bg)] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{
-                        width: `${winChance}%`,
-                        background: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)',
-                      }} />
+                      <div className="h-full rounded-full bg-[var(--accent)] transition-all" style={{ width: `${expProgress}%` }} />
                     </div>
-                    <div className="text-[10px] text-[#444] mt-1 text-right">
-                      {winChance >= 75 ? 'Висока перевага' : winChance >= 50 ? 'Рівний бій' : winChance >= 30 ? 'Ризиковано' : 'Дуже небезпечно'}
-                    </div>
+                    <div className="text-[10px] font-mono text-[#444] mt-0.5 text-right">{expProgress}%</div>
                   </div>
                 )}
 
-                {isRuinDead && (
-                  <p className="text-center text-xs text-[#333] font-mono">Руїну знищено — відновиться при рефреші</p>
+                {myExp.status === 'ready' && (
+                  <div>
+                    {myExp.type === 'extract' && myExp.result?.amount > 0 && (
+                      <div className="text-xs font-mono text-[var(--neon)]">
+                        +{myExp.result.amount} {myExp.result.resource}
+                      </div>
+                    )}
+                    {myExp.type === 'attack' && (
+                      <div className={`text-xs font-mono ${myExp.result?.won ? 'text-[var(--neon)]' : 'text-[var(--accent)]'}`}>
+                        {myExp.result?.won ? '⚔️ Перемога!' : '💀 Поразка'}
+                      </div>
+                    )}
+                    {myExp.type === 'scout' && (
+                      <div className="text-xs font-mono text-[var(--neon)]">🔭 Поле досліджено</div>
+                    )}
+                    <button
+                      className="mt-2 w-full btn btn-neon text-sm"
+                      disabled={!!action}
+                      onClick={() => onClaim(myExp.id)}
+                    >
+                      {action === 'claim' ? 'Забираємо...' : '🎁 ЗАБРАТИ НАГОРОДУ'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ═══ Чужа активна місія ═══ */}
+            {!myExp && otherExp && (
+              <div className="text-xs text-[#444] font-mono bg-[var(--bg3)] rounded p-2">
+                ⚠ Інший гравець вже відправив команду на це поле
+              </div>
+            )}
+
+            {/* ═══ Дії (якщо немає своєї місії) ═══ */}
+            {!myExp && (
+              <>
+                {/* Ресурсне поле */}
+                {field.type === 'resource' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-[#555]">Ресурс</span>
+                      <span style={{ color: visual.color }} className="font-mono">{visual.icon} {field.resourceType}</span>
+                    </div>
+                    {field.extractionBonus > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-[#555]">Бонус станції</span>
+                        <span className="text-[var(--neon)] font-mono">+{field.extractionBonus}%</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Руїна */}
+                {field.type === 'ruin' && ruinConfig && !isRuinDead && (
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-mono mb-1">
+                        <span className="text-[#555]">HP руїни</span>
+                        <span style={{ color: visual.color }}>{field.ruinHP ?? 100}%</span>
+                      </div>
+                      <div className="h-2 bg-[var(--bg)] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color }} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#444] uppercase tracking-wider mb-1.5">Охорона</p>
+                      <div className="flex flex-wrap gap-1">
+                        {ruinConfig.enemyArmy?.map((u, i) => {
+                          const unit = UNITS[u.unitId]
+                          return (
+                            <span key={i} className="text-[10px] bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 font-mono">
+                              {unit?.icon} ×{u.count} рів.{u.level}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {hasArmy && winChance !== null && (
+                      <div>
+                        <div className="flex items-center justify-between text-xs font-mono mb-1">
+                          <span className="text-[#555]">Шанс перемоги</span>
+                          <span style={{ color: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)' }}>
+                            {winChance}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-[var(--bg)] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{
+                            width: `${winChance}%`,
+                            background: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)',
+                          }} />
+                        </div>
+                      </div>
+                    )}
+                    {isRuinDead && (
+                      <p className="text-center text-xs text-[#333] font-mono">Руїну знищено — відновиться при рефреші</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Нейтральне */}
+                {field.type === 'neutral' && (
+                  <p className="text-xs text-[#444] text-center py-1">
+                    Нейтральна зона. Активується після наступного рефрешу.
+                  </p>
                 )}
               </>
             )}
-
-            {/* НЕЙТРАЛЬНЕ */}
-            {field.type === 'neutral' && (
-              <p className="text-xs text-[#444] text-center py-1">
-                Нейтральна зона. Активується після наступного рефрешу.
-              </p>
-            )}
           </div>
 
-          {/* Кнопки */}
-          <div className="px-3 pb-3">
-            {field.type === 'resource' && !isMine && !isOccupied && (
-              <button className="w-full btn btn-neon text-sm" disabled={!!action} onClick={onExtract}>
-                {action === 'extracting' ? '⛏️ Видобуваємо...' : '⛏️ ВИДОБУТИ РЕСУРСИ'}
-              </button>
-            )}
-            {field.type === 'ruin' && !isRuinDead && (
-              !hasArmy
-                ? <p className="text-center text-xs text-[var(--accent)]">Сформуй армію в місті перед атакою</p>
-                : <button className="w-full btn btn-accent text-sm" disabled={!!action} onClick={onAttack}>
-                    {action === 'attacking' ? '⚔️ Бій...' : '⚔️ АТАКУВАТИ РУЇНУ'}
+          {/* Кнопки дій (якщо немає активної місії) */}
+          {!myExp && (
+            <div className="px-3 pb-3 space-y-2">
+              {/* Scout */}
+              {labLevels.geolab >= 1 && field.type !== 'neutral' && (
+                <button className="w-full btn btn-secondary text-xs" disabled={!!action}
+                  onClick={() => onStartExp(field.id, 'scout')}>
+                  {action === 'scout' ? 'Відправляємо...' : `🔭 РОЗВІДАТИ (Геолаб рів.${labLevels.geolab})`}
+                </button>
+              )}
+              {labLevels.geolab < 1 && (
+                <p className="text-center text-[10px] text-[#444] font-mono">Геолаб рів.1 — розвідка</p>
+              )}
+
+              {/* Extract */}
+              {field.type === 'resource' && (
+                labLevels.extraction_station >= 1 ? (
+                  <button className="w-full btn btn-neon text-sm" disabled={!!action || !!otherExp}
+                    onClick={() => onStartExp(field.id, 'extract')}>
+                    {action === 'extract' ? 'Відправляємо...' : `⛏️ ВИДОБУТИ РЕСУРСИ`}
                   </button>
-            )}
-          </div>
+                ) : (
+                  <p className="text-center text-xs text-[#444] font-mono">Потрібна Екстракційна станція</p>
+                )
+              )}
+
+              {/* Attack */}
+              {field.type === 'ruin' && !isRuinDead && (
+                labLevels.assault_base >= 1 ? (
+                  !hasArmy ? (
+                    <p className="text-center text-xs text-[var(--accent)]">Сформуй армію перед штурмом</p>
+                  ) : (
+                    <button className="w-full btn btn-accent text-sm" disabled={!!action}
+                      onClick={() => onStartExp(field.id, 'attack')}>
+                      {action === 'attack' ? 'Відправляємо...' : `⚔️ ШТУРМУВАТИ`}
+                    </button>
+                  )
+                ) : (
+                  <p className="text-center text-xs text-[#444] font-mono">Потрібна Штурмова база</p>
+                )
+              )}
+
+              {/* Force refresh */}
+              {labLevels.signal_tower >= 1 && (
+                <button
+                  className="w-full text-xs font-mono py-1.5 rounded border border-[var(--border)] text-[#555] hover:border-[var(--neon)] hover:text-[var(--neon)] transition-colors"
+                  disabled={!!action || usedRefresh >= maxRefresh}
+                  onClick={() => onForceRefresh(field.id)}
+                >
+                  📡 Форс-рефреш ({maxRefresh - usedRefresh}/{maxRefresh} сьогодні)
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -568,8 +752,5 @@ function truncate(str, len) {
 
 function hexToRgb(hex) {
   if (!hex || hex.length < 7) return '128,128,128'
-  const r = parseInt(hex.slice(1, 3), 16) || 128
-  const g = parseInt(hex.slice(3, 5), 16) || 128
-  const b = parseInt(hex.slice(5, 7), 16) || 128
-  return `${r},${g},${b}`
+  return `${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)}`
 }

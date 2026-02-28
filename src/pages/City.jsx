@@ -10,6 +10,7 @@ import {
 } from '../firebase/service'
 import { upgradeCastle } from '../firebase/castleService'
 import { recruitUnit, upgradeUnit, setFormation } from '../firebase/unitService'
+import { LAB_BUILDINGS } from '../config/labs'
 import {
   subscribePlayerMissions, initPlayerMissions, updateMissionProgress, claimMissionReward,
 } from '../firebase/missionService'
@@ -36,7 +37,7 @@ const NAV_ITEMS = [
   { id: 'trade',  icon: '🔄', label: 'Торгівля' },
 ]
 
-const DEFAULT_OPEN = ['hero', 'production', 'buildings', 'castle', 'army']
+const DEFAULT_OPEN = ['hero', 'production', 'buildings', 'labs', 'castle', 'army']
 function loadOpenSections() {
   try {
     return new Set(JSON.parse(localStorage.getItem('city_sections') || JSON.stringify(DEFAULT_OPEN)))
@@ -256,6 +257,39 @@ export default function City() {
       }).catch(console.error)
     } catch {
       showFeedback('error', 'Помилка апгрейду')
+    }
+  }
+
+  // ─── Апгрейд лабораторій ─────────────────────────────────────
+  async function handleLabUpgrade(labId) {
+    if (!player) return
+    const labConfig    = LAB_BUILDINGS[labId]
+    const currentLevel = player.buildings?.[labId]?.level || 0
+    const nextLvl      = labConfig?.levels?.[currentLevel]
+
+    if (!nextLvl) { showFeedback('error', 'Максимальний рівень!'); return }
+
+    for (const [res, cost] of Object.entries(nextLvl.cost)) {
+      if ((player.resources?.[res] || 0) < cost) {
+        const info = RESOURCE_ICONS[res]
+        showFeedback('error', `Не вистачає: ${info?.icon || ''} ${cost} ${info?.name || res}`)
+        return
+      }
+    }
+
+    const newResources = { ...player.resources }
+    for (const [res, cost] of Object.entries(nextLvl.cost)) {
+      newResources[res] = (newResources[res] || 0) - cost
+    }
+
+    try {
+      await updatePlayer(player.id, {
+        [`buildings.${labId}.level`]: currentLevel + 1,
+        resources: newResources,
+      })
+      showFeedback('success', `${labConfig.name} → Рівень ${currentLevel + 1} ✓`)
+    } catch {
+      showFeedback('error', 'Помилка апгрейду лабораторії')
     }
   }
 
@@ -551,6 +585,7 @@ export default function City() {
               onRecruitUnit={handleRecruitUnit}
               onUpgradeUnit={handleUpgradeUnit}
               onSetFormation={handleSetFormation}
+              onLabUpgrade={handleLabUpgrade}
             />
           </div>
         )}
@@ -716,6 +751,7 @@ function CityTab({
   onStartResearch, onRevealCell, onBuildMine, onCollectMine, onUpgradeMine,
   onPlaceBuilding, onRemoveBuilding,
   onCastleUpgrade, onRecruitUnit, onUpgradeUnit, onSetFormation,
+  onLabUpgrade,
 }) {
   const totalPlaced  = player.workers?.placed || 0
   const totalWorkers = player.workers?.total  || 5
@@ -818,6 +854,11 @@ function CityTab({
         </div>
       </CollapsibleSection>
 
+      {/* ─── ЛАБОРАТОРІЇ ─── */}
+      <CollapsibleSection id="labs" title="🔭 ЛАБОРАТОРІЇ" open={openSections.has('labs')} onToggle={toggleSection}>
+        <LabsPanel player={player} onLabUpgrade={onLabUpgrade} />
+      </CollapsibleSection>
+
       {/* ─── ПОЛЕ МІСТА ─── */}
       {player.resourceMap && (
         <CollapsibleSection id="grid" title="ПОЛЕ МІСТА" open={openSections.has('grid')} onToggle={toggleSection}>
@@ -856,6 +897,107 @@ function CityTab({
           onSetFormation={onSetFormation}
         />
       </CollapsibleSection>
+    </div>
+  )
+}
+
+// ─── Панель Лабораторій ───────────────────────────────────────
+function LabsPanel({ player, onLabUpgrade }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {Object.values(LAB_BUILDINGS).map(lab => {
+        const currentLevel = player?.buildings?.[lab.id]?.level || 0
+        const nextLvl      = lab.levels[currentLevel]
+        const maxed        = currentLevel >= lab.maxLevel
+
+        const canAfford = nextLvl
+          ? Object.entries(nextLvl.cost).every(([res, cost]) => (player?.resources?.[res] || 0) >= cost)
+          : false
+
+        const currentCfg = currentLevel > 0 ? lab.levels[currentLevel - 1] : null
+
+        return (
+          <div key={lab.id}
+            className="rounded-xl border border-[var(--border)] bg-[var(--bg2)] p-3 flex flex-col gap-2">
+            {/* Заголовок */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{lab.icon}</span>
+                <div>
+                  <div className="font-semibold text-sm text-white">{lab.name}</div>
+                  <div className="text-[10px] text-[#444] font-mono">
+                    {maxed ? 'МАКС' : `Рів. ${currentLevel}/${lab.maxLevel}`}
+                  </div>
+                </div>
+              </div>
+              {/* Рівень badge */}
+              <span className={`text-xs font-mono px-2 py-0.5 rounded border ${
+                currentLevel === 0
+                  ? 'text-[#444] border-[var(--border)]'
+                  : 'text-[var(--neon)] border-[var(--neon)] bg-[rgba(0,255,136,0.08)]'
+              }`}>
+                {currentLevel === 0 ? 'не збудовано' : `рів.${currentLevel}`}
+              </span>
+            </div>
+
+            {/* Опис */}
+            <p className="text-[11px] text-[#555] leading-snug">{lab.description}</p>
+
+            {/* Поточні характеристики */}
+            {currentCfg && (
+              <div className="text-[10px] font-mono text-[#666] flex flex-wrap gap-2">
+                {currentCfg.scoutTime   && <span>🔭 {Math.round(currentCfg.scoutTime / 60)} хв (x1)</span>}
+                {currentCfg.extractTime && <span>⚗️ {Math.round(currentCfg.extractTime / 60)} хв</span>}
+                {currentCfg.bonus       !== undefined && <span>+{currentCfg.bonus}% видобуток</span>}
+                {currentCfg.marchTime   && <span>🚀 марш {Math.round(currentCfg.marchTime / 60)} хв</span>}
+                {currentCfg.dailyRefreshes && <span>📡 {currentCfg.dailyRefreshes}×/день</span>}
+              </div>
+            )}
+
+            {/* Наступний рівень */}
+            {nextLvl && (
+              <div>
+                <p className="text-[9px] text-[#444] uppercase tracking-wider mb-1">
+                  Рів.{currentLevel + 1}:
+                  {nextLvl.scoutTime   && ` 🔭 ${Math.round(nextLvl.scoutTime / 60)}хв`}
+                  {nextLvl.extractTime && ` ⚗️ ${Math.round(nextLvl.extractTime / 60)}хв`}
+                  {nextLvl.bonus       !== undefined && nextLvl.bonus > 0 && ` +${nextLvl.bonus}%`}
+                  {nextLvl.marchTime   && ` 🚀 ${Math.round(nextLvl.marchTime / 60)}хв`}
+                  {nextLvl.dailyRefreshes && ` 📡 ${nextLvl.dailyRefreshes}×/д`}
+                </p>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {Object.entries(nextLvl.cost).map(([res, cost]) => {
+                    const icons = { gold: '🪙', bits: '💾', code: '🔐', bio: '🧬', energy: '⚡', crystals: '💎', stone: '🪨' }
+                    const have  = player?.resources?.[res] || 0
+                    return (
+                      <span key={res} className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                        have >= cost ? 'text-[var(--neon)] border-[rgba(0,255,136,0.25)]' : 'text-[var(--accent)] border-[rgba(255,69,0,0.25)]'
+                      }`}>
+                        {icons[res]} {cost}
+                      </span>
+                    )
+                  })}
+                </div>
+                <button
+                  className={`w-full text-xs font-semibold py-1.5 rounded border transition-all ${
+                    canAfford
+                      ? 'border-[var(--neon)] text-[var(--neon)] hover:bg-[rgba(0,255,136,0.08)]'
+                      : 'border-[var(--border)] text-[#444] cursor-not-allowed'
+                  }`}
+                  disabled={!canAfford}
+                  onClick={() => onLabUpgrade(lab.id)}
+                >
+                  {currentLevel === 0 ? `ЗБУДУВАТИ` : `ПОКРАЩИТИ → рів.${currentLevel + 1}`}
+                </button>
+              </div>
+            )}
+
+            {maxed && (
+              <div className="text-center text-[10px] text-[var(--neon)] font-mono">✓ МАКСИМАЛЬНИЙ РІВЕНЬ</div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
