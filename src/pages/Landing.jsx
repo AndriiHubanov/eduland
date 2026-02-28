@@ -170,12 +170,20 @@ export default function Landing() {
       {/* ─── Нижня частина ─── */}
       <div className="flex flex-col items-center gap-3 mt-6">
         <div className="w-8 h-0.5 bg-[var(--border)]" />
-        <a
-          href="/admin"
-          className="font-mono text-xs text-[#333] hover:text-[#555] tracking-widest transition-colors"
-        >
-          [ АДМІН ]
-        </a>
+        <div className="flex gap-4">
+          <a
+            href="/wiki"
+            className="font-mono text-xs text-[#444] hover:text-[var(--neon)] tracking-widest transition-colors"
+          >
+            [ ВІКІ ]
+          </a>
+          <a
+            href="/admin"
+            className="font-mono text-xs text-[#333] hover:text-[#555] tracking-widest transition-colors"
+          >
+            [ АДМІН ]
+          </a>
+        </div>
       </div>
     </div>
   )

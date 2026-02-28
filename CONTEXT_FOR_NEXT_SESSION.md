@@ -24,21 +24,23 @@
 | 13   | **Візуальне місто** — 7×7 CSS grid, постапок стиль, BuildingDetailPanel | ✅ Зроблено |
 | 14   | **Візуальна карта** — 800×800 terrain map, SVG річки, FieldMarker/CityMarker | ✅ Зроблено |
 | 15   | **Admin polish** — таблиця гравців, CSV export, lazy loading | ✅ Зроблено |
+| 16   | **Графіка + Вікі** — GameImage fallback, папки assets/, вікі для студентів | ✅ Зроблено |
 
 ---
 
 ## Наступні кроки
 
-### Фаза 16 — Інтеграція графіки (ПРІОРИТЕТ)
-**Передумова:** Користувач генерує картинки (є файл GRAPHICS_PROMPT.md з промптом).
+### Фаза 16 — ✅ ЗРОБЛЕНО
+- `public/assets/` структура папок створена
+- `src/config/assets.js` — централізовані шляхи (`buildingImg`, `unitImg`, `heroImg`, `fieldImg`)
+- `src/components/GameImage.jsx` — `<img>` з emoji-fallback коли PNG відсутній
+- CityGrid, WorldMap FieldMarker, HeroCreate — підключені до GameImage
+- `/wiki` — вікі для студентів (ресурси, герої, будівлі, карта, армія, прогрес, поради) + JSON AI-контекст
+- Посилання [ВІКІ] на Landing page
 
-**Що треба зробити:**
-- Замінити emoji-іконки будівель у `src/components/CityGrid.jsx` на `<img>` теги
-- Замінити emoji-іконки полів у `src/pages/WorldMap.jsx` → `FieldMarker`
-- Замінити emoji юнітів у `src/firebase/unitService.js` / `BattleScreen.jsx`
-- Додати зображення героїв у вибір класу (`HeroCreate.jsx`)
-- Формат: WebP 512×512 для будівель (рівні 1/2/3), 128×128 для маркерів/юнітів
-- Шлях: `public/assets/buildings/`, `public/assets/units/`, `public/assets/fields/`
+### Наступні кроки
+- **Додати реальні PNG** у `public/assets/` (промпт у `GRAPHICS_PROMPT.md`)
+- Якщо є BattleScreen юніти emoji — замінити через `<GameImage src={unitImg(id)} fallback={unit.icon} />`
 
 ---
 

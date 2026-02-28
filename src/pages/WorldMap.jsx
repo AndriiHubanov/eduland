@@ -13,6 +13,8 @@ import {
 import { RUINS } from '../firebase/ruinService'
 import { getFieldVisual, FIELD_TIERS } from '../config/fields'
 import { LAB_BUILDINGS, formatCountdown } from '../config/labs'
+import GameImage from '../components/GameImage'
+import { fieldImg } from '../config/assets'
 import { Spinner, BottomNav } from '../components/UI'
 import BattleScreen from '../components/BattleScreen'
 import { UNITS, getUnitStats } from '../firebase/unitService'
@@ -520,10 +522,14 @@ function FieldMarker({ field, x, y, myExp, otherExp, tick, visible, onClick }) {
         zIndex: isReady ? 10 : hasMyExp ? 8 : 5,
       }}
     >
-      {/* Іконка */}
-      <span className="text-xl leading-none" style={{ opacity: isRuinDead ? 0.25 : 1 }}>
-        {visual.icon}
-      </span>
+      {/* Іконка / зображення */}
+      <GameImage
+        src={fieldImg(field.type, field.tier)}
+        fallback={visual.icon}
+        alt={visual.name}
+        className="w-7 h-7 object-contain leading-none"
+        style={{ opacity: isRuinDead ? 0.25 : 1 }}
+      />
 
       {/* Tier badge */}
       {tier && (

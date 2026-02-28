@@ -19,6 +19,7 @@ const Inbox     = lazy(() => import('./pages/Inbox'))
 const Trade     = lazy(() => import('./pages/Trade'))
 const Admin     = lazy(() => import('./pages/Admin'))
 const SurveyPage = lazy(() => import('./pages/SurveyPage'))
+const Wiki       = lazy(() => import('./pages/Wiki'))
 
 // Захищений маршрут — перевіряє авторизацію
 function PrivateRoute({ children }) {
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/"       element={<Landing />} />
           <Route path="/create" element={<HeroCreate />} />
           <Route path="/admin"  element={<Admin />} />
+          <Route path="/wiki"   element={<Wiki />} />
 
           {/* Захищені маршрути (потрібен гравець) */}
           <Route path="/city"    element={<PrivateRoute><City /></PrivateRoute>} />
