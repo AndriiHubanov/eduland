@@ -551,7 +551,7 @@ export async function submitTest({ player, task, answers }) {
 // ─── АДМІНКА: ПІДТВЕРДЖЕННЯ ──────────────────────────────────
 
 // Підписка на очікуючі підтвердження
-export function subscribePendingSubmissions(callback) {
+export function subscribePendingSubmissions(callback, onError) {
   const q = query(
     collection(db, 'submissions'),
     where('status', '==', 'pending')
@@ -565,7 +565,7 @@ export function subscribePendingSubmissions(callback) {
         return tb - ta
       })
     callback(subs)
-  })
+  }, onError)
 }
 
 // Підтвердити здачу завдання (нараховує ресурси)
@@ -643,11 +643,11 @@ export async function getAllTasks() {
 }
 
 // Підписка на всі активні завдання (для адмінки)
-export function subscribeAllActiveTasks(callback) {
+export function subscribeAllActiveTasks(callback, onError) {
   const q = query(collection(db, 'tasks'), where('active', '==', true))
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-  })
+  }, onError)
 }
 
 export async function createTask(data) {
