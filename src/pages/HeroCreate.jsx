@@ -6,6 +6,8 @@ import { HERO_CLASSES } from '../store/gameStore'
 import useGameStore from '../store/gameStore'
 import { createPlayer } from '../firebase/service'
 import { Button, Input, Spinner, ErrorMsg, Card } from '../components/UI'
+import GameImage from '../components/GameImage'
+import { heroImg } from '../config/assets'
 
 const FREE_POINTS = 3
 
@@ -131,7 +133,12 @@ export default function HeroCreate() {
                   }
                 `}
               >
-                <div className="text-3xl mb-2">{cls.icon}</div>
+                <GameImage
+                  src={heroImg(key)}
+                  fallback={cls.icon}
+                  alt={cls.name}
+                  className="w-16 h-16 object-contain mb-2 rounded-lg"
+                />
                 <div className="font-bebas text-lg tracking-wider text-white">{cls.name}</div>
                 <div className="text-xs text-[#888] leading-snug mt-1">{cls.description}</div>
                 {selectedClass === key && (
@@ -195,7 +202,12 @@ export default function HeroCreate() {
               <>
                 <p className="text-xs text-[#555] uppercase tracking-wider mb-2">Твій герой</p>
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="text-4xl">{HERO_CLASSES[selectedClass].icon}</span>
+                  <GameImage
+                    src={heroImg(selectedClass)}
+                    fallback={HERO_CLASSES[selectedClass].icon}
+                    alt={HERO_CLASSES[selectedClass].name}
+                    className="w-14 h-14 object-contain rounded-lg"
+                  />
                   <div>
                     <div className="font-bebas text-xl text-white">{heroName}</div>
                     <div className="text-sm text-[#888]">{HERO_CLASSES[selectedClass].name} · {pendingGroup}</div>

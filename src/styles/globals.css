@@ -320,3 +320,40 @@ body {
   transition: width 1s linear;
   border-radius: 0 0 8px 8px;
 }
+
+/* ─── Wiki стилі ─── */
+.wiki-table {
+  @apply w-full text-xs border-collapse;
+}
+.wiki-table th {
+  @apply text-left px-3 py-2 text-[#555] font-mono uppercase tracking-wider border-b border-[var(--border)] bg-[var(--bg3)];
+}
+.wiki-table td {
+  @apply px-3 py-2 border-b border-[var(--border)];
+}
+.wiki-table tr:last-child td {
+  @apply border-b-0;
+}
+.wiki-table tr:hover td {
+  @apply bg-[var(--bg3)];
+}
+.wiki-h3 {
+  @apply font-bebas text-base tracking-widest text-[#888] mb-2 mt-4;
+}
+.wiki-ul {
+  @apply space-y-1.5 text-sm text-[#777] pl-0;
+  list-style: none;
+}
+.wiki-ul li {
+  @apply flex gap-2;
+}
+.wiki-ul li::before {
+  content: '›';
+  @apply text-[var(--neon)] shrink-0;
+}
+.wiki-ol {
+  @apply space-y-1.5 text-sm text-[#777] pl-4;
+}
+.wiki-ol li {
+  @apply list-decimal marker:text-[var(--accent)];
+}

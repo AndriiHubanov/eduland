@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { RESOURCE_ICONS } from '../store/gameStore'
+import GameImage from './GameImage'
+import { buildingImg } from '../config/assets'
 
 const GRID = 7
 
@@ -254,7 +256,12 @@ function CastleTile({ level, active }) {
   const CASTLE_NAMES = ['', 'Бункер', 'Опорпункт', 'Цитадель', 'Твердиня', 'Фортеця-Нова']
   return (
     <div className="flex flex-col items-center justify-center h-full gap-0.5 p-1">
-      <span className="text-4xl leading-none">🏰</span>
+      <GameImage
+        src={buildingImg('castle', level)}
+        fallback="🏰"
+        alt={`Замок рів.${level}`}
+        className="w-full max-w-[56px] max-h-[56px] object-contain leading-none"
+      />
       <span className={`text-[9px] font-mono leading-none mt-0.5 ${active ? 'text-[#ffd700]' : 'text-[#888]'}`}>
         {CASTLE_NAMES[level] || 'Замок'}
       </span>
@@ -282,7 +289,12 @@ function BuildingTile({ bConfig, pBuilding, active }) {
   if (level === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-0.5 opacity-30">
-        <span className="text-2xl leading-none grayscale">{bConfig.icon}</span>
+        <GameImage
+          src={buildingImg(bConfig.id, 1)}
+          fallback={bConfig.icon}
+          alt={bConfig.name}
+          className="w-full max-w-[36px] max-h-[36px] object-contain grayscale leading-none"
+        />
         <span className="text-[8px] font-mono text-[#444]">🔒</span>
       </div>
     )
@@ -290,7 +302,12 @@ function BuildingTile({ bConfig, pBuilding, active }) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-0.5 p-0.5">
-      <span className="text-2xl leading-none">{bConfig.icon}</span>
+      <GameImage
+        src={buildingImg(bConfig.id, level)}
+        fallback={bConfig.icon}
+        alt={`${bConfig.name} рів.${level}`}
+        className="w-full max-w-[36px] max-h-[36px] object-contain leading-none"
+      />
       <span className={`text-[8px] font-mono leading-none ${active ? 'text-[var(--neon)]' : 'text-[#666]'}`}>
         рів.{level}
       </span>
