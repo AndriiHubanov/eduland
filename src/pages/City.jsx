@@ -8,11 +8,15 @@ import {
   ensureResourceMap, startResearch, revealCell, buildMine, collectMine, upgradeMine,
   placeBuildingOnGrid, removeBuildingFromGrid,
 } from '../firebase/service'
+import { upgradeCastle } from '../firebase/castleService'
+import { recruitUnit, upgradeUnit, setFormation } from '../firebase/unitService'
 import {
   ResourceBar, XPBar, Spinner, ErrorMsg, SuccessMsg, Button, Card, BottomNav
 } from '../components/UI'
 import BuildingCard from '../components/BuildingCard'
 import MiningGrid   from '../components/MiningGrid'
+import CastlePanel  from '../components/CastlePanel'
+import UnitsPanel   from '../components/UnitsPanel'
 
 const NAV_ITEMS = [
   { id: 'city',   icon: '🏙️', label: 'Місто'   },
@@ -281,6 +285,44 @@ export default function City() {
     }
   }
 
+  // ─── Замок ──────────────────────────────────────────────────
+  async function handleCastleUpgrade() {
+    try {
+      await upgradeCastle(player.id)
+      showFeedback('success', 'Замок покращено!')
+    } catch (err) {
+      showFeedback('error', err.message)
+    }
+  }
+
+  // ─── Юніти ──────────────────────────────────────────────────
+  async function handleRecruitUnit(unitId) {
+    try {
+      await recruitUnit(player.id, unitId)
+      showFeedback('success', 'Юніта найнято!')
+    } catch (err) {
+      showFeedback('error', err.message)
+    }
+  }
+
+  async function handleUpgradeUnit(unitId) {
+    try {
+      await upgradeUnit(player.id, unitId)
+      showFeedback('success', 'Юніта покращено!')
+    } catch (err) {
+      showFeedback('error', err.message)
+    }
+  }
+
+  async function handleSetFormation(formation) {
+    try {
+      await setFormation(player.id, formation)
+      showFeedback('success', 'Формацію збережено!')
+    } catch (err) {
+      showFeedback('error', err.message)
+    }
+  }
+
   function handleLogout() {
     logout()
     navigate('/')
@@ -326,7 +368,7 @@ export default function City() {
             </button>
           </div>
         </div>
-        <ResourceBar resources={player.resources} />
+        <ResourceBar resources={player.resources} diamonds={player.diamonds} />
       </header>
 
       {/* ─── Модалка виходу ─── */}
@@ -375,6 +417,10 @@ export default function City() {
           onUpgradeMine={handleUpgradeMine}
           onPlaceBuilding={handlePlaceBuilding}
           onRemoveBuilding={handleRemoveBuilding}
+          onCastleUpgrade={handleCastleUpgrade}
+          onRecruitUnit={handleRecruitUnit}
+          onUpgradeUnit={handleUpgradeUnit}
+          onSetFormation={handleSetFormation}
         />
       </main>
 
@@ -446,6 +492,7 @@ function CityTab({
   onWorkerToggle, onUpgrade, onWorkerReset,
   onStartResearch, onRevealCell, onBuildMine, onCollectMine, onUpgradeMine,
   onPlaceBuilding, onRemoveBuilding,
+  onCastleUpgrade, onRecruitUnit, onUpgradeUnit, onSetFormation,
 }) {
   const totalPlaced  = player.workers?.placed || 0
   const totalWorkers = player.workers?.total  || 5
@@ -601,6 +648,23 @@ function CityTab({
           </Card>
         </section>
       )}
+
+      {/* ─── ЗАМОК ─── */}
+      <section>
+        <SectionTitle>ЗАМОК</SectionTitle>
+        <CastlePanel player={player} onUpgrade={onCastleUpgrade} />
+      </section>
+
+      {/* ─── АРМІЯ ─── */}
+      <section>
+        <SectionTitle>АРМІЯ</SectionTitle>
+        <UnitsPanel
+          player={player}
+          onRecruit={onRecruitUnit}
+          onUpgrade={onUpgradeUnit}
+          onSetFormation={onSetFormation}
+        />
+      </section>
     </div>
   )
 }
