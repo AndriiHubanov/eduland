@@ -15,6 +15,10 @@ import {
   subscribePlayerMissions, initPlayerMissions, updateMissionProgress, claimMissionReward,
 } from '../firebase/missionService'
 import {
+  startScience, completeScience, unlockScienceWithRP,
+} from '../firebase/scienceService'
+import TechTreePanel from '../components/TechTreePanel'
+import {
   ResourceBar, XPBar, Spinner, ErrorMsg, SuccessMsg, Button, Card, BottomNav,
   LoreBanner, ResourceBadge, EmptyState,
 } from '../components/UI'
@@ -37,7 +41,7 @@ const NAV_ITEMS = [
   { id: 'trade',  icon: '🔄', label: 'Торгівля' },
 ]
 
-const DEFAULT_OPEN = ['hero', 'production', 'buildings', 'labs', 'castle', 'army']
+const DEFAULT_OPEN = ['hero', 'production', 'buildings', 'labs', 'techtree', 'castle', 'army']
 function loadOpenSections() {
   try {
     return new Set(JSON.parse(localStorage.getItem('city_sections') || JSON.stringify(DEFAULT_OPEN)))
@@ -290,6 +294,26 @@ export default function City() {
       showFeedback('success', `${labConfig.name} → Рівень ${currentLevel + 1} ✓`)
     } catch {
       showFeedback('error', 'Помилка апгрейду лабораторії')
+    }
+  }
+
+  // ─── Tech Tree ──────────────────────────────────────────────
+  async function handleScienceUnlockRP(scienceId) {
+    try {
+      await unlockScienceWithRP(player.id, scienceId)
+      showFeedback('success', 'Науку відкрито за RP!')
+    } catch (err) {
+      showFeedback('error', err.message)
+    }
+  }
+
+  async function handleScienceStart(scienceId) {
+    try {
+      await startScience(player.id, scienceId)
+      showFeedback('success', 'Дослідження розпочато!')
+      updateMissionProgress(player.id, 'start_research').catch(console.error)
+    } catch (err) {
+      showFeedback('error', err.message)
     }
   }
 
@@ -586,6 +610,8 @@ export default function City() {
               onUpgradeUnit={handleUpgradeUnit}
               onSetFormation={handleSetFormation}
               onLabUpgrade={handleLabUpgrade}
+              onScienceUnlockRP={handleScienceUnlockRP}
+              onScienceStart={handleScienceStart}
             />
           </div>
         )}
@@ -751,7 +777,7 @@ function CityTab({
   onStartResearch, onRevealCell, onBuildMine, onCollectMine, onUpgradeMine,
   onPlaceBuilding, onRemoveBuilding,
   onCastleUpgrade, onRecruitUnit, onUpgradeUnit, onSetFormation,
-  onLabUpgrade,
+  onLabUpgrade, onScienceUnlockRP, onScienceStart,
 }) {
   const totalPlaced  = player.workers?.placed || 0
   const totalWorkers = player.workers?.total  || 5
@@ -765,15 +791,18 @@ function CityTab({
       <CollapsibleSection id="hero" title="ГЕРОЙ" open={openSections.has('hero')} onToggle={toggleSection}>
         <Card>
           <XPBar {...xpProgress} />
-          <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="grid grid-cols-4 gap-2 mt-3">
             {[
               { label: 'Інтелект',     value: player.heroStats?.intellect  || 5, icon: '🧠' },
               { label: 'Витривалість', value: player.heroStats?.endurance  || 5, icon: '💪' },
               { label: 'Харизма',      value: player.heroStats?.charisma   || 5, icon: '✨' },
+              { label: 'RP',           value: player.researchPoints || 0,       icon: '🧪' },
             ].map(stat => (
               <div key={stat.label} className="text-center bg-[var(--bg3)] rounded p-2">
                 <div className="text-base">{stat.icon}</div>
-                <div className="font-mono text-lg text-[var(--gold)]">{stat.value}</div>
+                <div className="font-mono text-lg" style={{ color: stat.label === 'RP' ? '#b9f2ff' : 'var(--gold)' }}>
+                  {stat.value}
+                </div>
                 <div className="text-[10px] text-[#555] uppercase">{stat.label}</div>
               </div>
             ))}
@@ -857,6 +886,15 @@ function CityTab({
       {/* ─── ЛАБОРАТОРІЇ ─── */}
       <CollapsibleSection id="labs" title="🔭 ЛАБОРАТОРІЇ" open={openSections.has('labs')} onToggle={toggleSection}>
         <LabsPanel player={player} onLabUpgrade={onLabUpgrade} />
+      </CollapsibleSection>
+
+      {/* ─── TECH TREE ─── */}
+      <CollapsibleSection id="techtree" title="🔬 ПРИРОДНИЧІ НАУКИ" open={openSections.has('techtree')} onToggle={toggleSection}>
+        <TechTreePanel
+          player={player}
+          onUnlockRP={onScienceUnlockRP}
+          onStartResearch={onScienceStart}
+        />
       </CollapsibleSection>
 
       {/* ─── ПОЛЕ МІСТА ─── */}
