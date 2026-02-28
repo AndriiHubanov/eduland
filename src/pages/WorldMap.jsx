@@ -1,20 +1,31 @@
-// ─── WorldMap Page (/map): Карта світу — повний екран ───
+// ─── WorldMap — Фаза 9: 31 поле з 48г рефрешем ───
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useGameStore, { HERO_CLASSES, getHeroLevel } from '../store/gameStore'
 import { subscribeGroupPlayers } from '../firebase/service'
-import { Spinner, Button, BottomNav } from '../components/UI'
-import { RUIN_TEMPLATES, RUINS, attackRuin } from '../firebase/ruinService'
-import { UNITS, getUnitStats, UNIT_LEVEL_MULTIPLIER } from '../firebase/unitService'
+import { subscribeGroupFields, extractFieldResources, attackFieldRuin, getFieldTimeLeft } from '../firebase/fieldService'
+import { RUINS } from '../firebase/ruinService'
+import { getFieldVisual, FIELD_TIERS } from '../config/fields'
+import { Spinner, BottomNav } from '../components/UI'
+import BattleScreen from '../components/BattleScreen'
+import { UNITS, getUnitStats } from '../firebase/unitService'
 
-// ─── Розрахунок шансу перемоги (0..100) ────────────────────
-function calcWinChance(player, ruinConfig) {
+const NAV_ITEMS = [
+  { id: 'city',   icon: '🏙️', label: 'Місто'   },
+  { id: 'map',    icon: '🗺️', label: 'Карта'   },
+  { id: 'tasks',  icon: '⚔️', label: 'Завдання' },
+  { id: 'inbox',  icon: '📬', label: 'Пошта'   },
+  { id: 'trade',  icon: '🔄', label: 'Торгівля' },
+]
+
+// ─── Шанс перемоги проти руїни ────────────────────────────────
+function calcWinChance(player, ruinTier) {
+  const ruinConfig = RUINS[`tier${ruinTier}`]
   if (!player || !ruinConfig) return null
   const formation = player.army?.formation || []
   if (formation.length === 0) return null
 
-  // Бойовий рейтинг = сума (ATK * count + DEF * count + HP * count * 0.1)
   function armyRating(armyData, heroClass, isRuin = false) {
     let total = 0
     for (const slot of armyData) {
@@ -40,213 +51,216 @@ function calcWinChance(player, ruinConfig) {
   if (atkRating === 0) return 0
   if (defRating === 0) return 100
 
-  // Шанс: логістична крива від співвідношення рейтингів
   const ratio = atkRating / defRating
   const chance = Math.round(100 / (1 + Math.exp(-2.5 * (ratio - 1))))
   return Math.max(5, Math.min(95, chance))
 }
-import BattleScreen from '../components/BattleScreen'
 
-const NAV_ITEMS = [
-  { id: 'city',   icon: '🏙️', label: 'Місто'   },
-  { id: 'map',    icon: '🗺️', label: 'Карта'   },
-  { id: 'tasks',  icon: '⚔️', label: 'Завдання' },
-  { id: 'inbox',  icon: '📬', label: 'Пошта'   },
-  { id: 'trade',  icon: '🔄', label: 'Торгівля' },
+// ─── Фільтри ─────────────────────────────────────────────────
+const FILTERS = [
+  { id: 'all',       label: 'Всі'        },
+  { id: 'resource',  label: '⚡ Ресурси'  },
+  { id: 'ruin',      label: '🏚️ Руїни'   },
+  { id: 'available', label: '✅ Вільні'  },
 ]
 
-const GRID_SIZE = 10
-const NAV_HEIGHT = 56 // px — висота нижньої навігації
-
+// ─── Головний компонент ───────────────────────────────────────
 export default function WorldMap() {
   const navigate = useNavigate()
   const { player, unreadMessages } = useGameStore()
 
-  const [players, setPlayers]         = useState([])
-  const [selected, setSelected]       = useState(null)
-  const [showLeaderboard, setShowLb]  = useState(false)
-  const [loading, setLoading]         = useState(true)
-  const [cellSize, setCellSize]       = useState(32)
-  const [selectedRuin, setSelectedRuin] = useState(null)  // { ruin, x, y }
-  const [battle, setBattle]           = useState(null)    // { ruin, data } або null
-  const [attacking, setAttacking]     = useState(false)
+  const [fields, setFields]     = useState([])
+  const [players, setPlayers]   = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [filter, setFilter]     = useState('all')
+  const [selected, setSelected] = useState(null)
+  const [showLb, setShowLb]     = useState(false)
+  const [action, setAction]     = useState(null)
+  const [battle, setBattle]     = useState(null)
+  const [toast, setToast]       = useState(null)
 
-  const containerRef = useRef(null)
-
-  // Підписка на гравців групи
   useEffect(() => {
-    if (!player) { navigate('/'); return }
-    const unsub = subscribeGroupPlayers(player.group, (data) => {
-      setPlayers(data)
+    if (!player?.group) return
+    const unsub = subscribeGroupFields(player.group, (data) => {
+      setFields(data)
       setLoading(false)
     })
     return () => unsub()
+  }, [player?.group])
+
+  useEffect(() => {
+    if (!player?.group) return
+    const unsub = subscribeGroupPlayers(player.group, setPlayers)
+    return () => unsub()
+  }, [player?.group])
+
+  useEffect(() => {
+    if (!player) navigate('/')
   }, [player])
 
-  // Обраховуємо розмір клітинки під поточний екран
-  useEffect(() => {
-    function calcSize() {
-      const w = window.innerWidth
-      const h = window.innerHeight - NAV_HEIGHT
-      // Квадрат що вписується в екран з невеликим відступом
-      const side = Math.floor(Math.min(w, h) * 0.97)
-      setCellSize(Math.floor(side / GRID_SIZE))
-    }
-    calcSize()
-    window.addEventListener('resize', calcSize)
-    return () => window.removeEventListener('resize', calcSize)
+  const showToast = useCallback((type, text) => {
+    setToast({ type, text })
+    setTimeout(() => setToast(null), 3000)
   }, [])
 
   function handleNavChange(tabId) {
-    if (tabId === 'city')  navigate('/city')
-    if (tabId === 'tasks') navigate('/tasks')
-    if (tabId === 'inbox') navigate('/inbox')
-    if (tabId === 'trade') navigate('/trade')
+    const routes = { city: '/city', tasks: '/tasks', inbox: '/inbox', trade: '/trade' }
+    if (routes[tabId]) navigate(routes[tabId])
   }
 
-  if (loading) return <Spinner text="Завантаження карти..." />
-
-  // Будуємо lookup гравців по позиції
-  const playerMap = {}
-  for (const p of players) {
-    const key = `${p.cityPosition?.x},${p.cityPosition?.y}`
-    playerMap[key] = p
-  }
-
-  // Позиції руїн — фіксовані по тіру (детерміновано від group-рядка)
-  const ruinPositions = [
-    { ...RUIN_TEMPLATES[0], x: 2, y: 7 },
-    { ...RUIN_TEMPLATES[1], x: 7, y: 2 },
-    { ...RUIN_TEMPLATES[2], x: 5, y: 5 },
-  ]
-  const ruinMap = {}
-  for (const r of ruinPositions) {
-    ruinMap[`${r.x},${r.y}`] = r
-  }
-
-  // Перевіряємо кулдаун руїни для поточного гравця
-  function getRuinCooldown(ruinId) {
-    const until = player?.ruinCooldowns?.[ruinId]
-    if (!until) return null
-    const d = until?.toDate ? until.toDate() : new Date(until)
-    if (Date.now() < d.getTime()) return d
-    return null
-  }
-
-  async function handleAttackRuin(ruin) {
-    if (attacking) return
-    setAttacking(true)
+  async function handleExtract(field) {
+    if (action) return
+    setAction('extracting')
     try {
-      const data = await attackRuin(player.id, ruin.id, ruin.tier)
-      setSelectedRuin(null)
-      setBattle({ ruin, data })
+      const result = await extractFieldResources(player.id, field.id)
+      setSelected(null)
+      showToast('neon', `+${result.amount} ${result.resource}`)
     } catch (err) {
-      alert(err.message)
+      showToast('accent', err.message)
     } finally {
-      setAttacking(false)
+      setAction(null)
     }
   }
 
-  const gridSidePx = cellSize * GRID_SIZE
+  async function handleAttack(field) {
+    if (action) return
+    setAction('attacking')
+    try {
+      const data = await attackFieldRuin(player.id, field.id)
+      setSelected(null)
+      setBattle({ field, data })
+    } catch (err) {
+      showToast('accent', err.message)
+    } finally {
+      setAction(null)
+    }
+  }
+
+  if (loading) return <Spinner text="Завантаження карти полів..." />
+
+  const visibleFields = fields.filter(f => {
+    if (filter === 'resource')  return f.type === 'resource'
+    if (filter === 'ruin')      return f.type === 'ruin'
+    if (filter === 'available') return !f.lastOccupiedBy || f.lastOccupiedBy === player?.id
+    return true
+  })
+
+  const stats = {
+    resource: fields.filter(f => f.type === 'resource').length,
+    ruin:     fields.filter(f => f.type === 'ruin').length,
+    free:     fields.filter(f => !f.lastOccupiedBy).length,
+  }
 
   return (
-    <div className="fixed inset-0 bg-[var(--bg)] flex flex-col" style={{ bottom: NAV_HEIGHT }}>
+    <div className="fixed inset-0 bg-[var(--bg)] flex flex-col" style={{ paddingBottom: 56 }}>
 
-      {/* ─── Плаваючий оверлей-заголовок ─── */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2"
-           style={{ background: 'linear-gradient(to bottom, rgba(10,10,15,0.9) 0%, transparent 100%)' }}>
+      {/* Заголовок */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)] shrink-0">
         <div>
-          <span className="font-bebas text-lg tracking-widest text-white">КАРТА РЕГІОНУ</span>
-          <span className="text-xs text-[#555] ml-2">{player?.group}</span>
+          <span className="font-bebas text-lg tracking-widest text-white">КАРТА ПОЛІВ</span>
+          <span className="text-xs text-[#444] ml-2 font-mono">{player?.group}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-[#555] font-mono">{players.length} міст</span>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1.5 text-[10px] font-mono">
+            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--neon)]">
+              ⚡{stats.resource}
+            </span>
+            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--gold)]">
+              🏚️{stats.ruin}
+            </span>
+            <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[#555]">
+              ⬜{stats.free}
+            </span>
+          </div>
           <button
             onClick={() => { setShowLb(true); setSelected(null) }}
-            className="text-sm bg-[rgba(255,215,0,0.15)] border border-[rgba(255,215,0,0.3)] text-[var(--gold)] rounded px-2 py-1 font-mono tracking-wider hover:bg-[rgba(255,215,0,0.25)] transition-colors"
+            className="text-sm bg-[rgba(255,215,0,0.1)] border border-[rgba(255,215,0,0.25)] text-[var(--gold)] rounded px-2 py-1 font-mono"
           >
             🏆
           </button>
         </div>
       </div>
 
-      {/* ─── Карта (центрована, квадратна) ─── */}
-      <div
-        ref={containerRef}
-        className="flex-1 flex items-center justify-center overflow-hidden"
-      >
-        <div
-          style={{
-            width:  gridSidePx,
-            height: gridSidePx,
-            display: 'grid',
-            gridTemplateColumns: `repeat(${GRID_SIZE}, ${cellSize}px)`,
-            gridTemplateRows:    `repeat(${GRID_SIZE}, ${cellSize}px)`,
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            overflow: 'hidden',
-          }}
-        >
-          {Array.from({ length: GRID_SIZE * GRID_SIZE }, (_, idx) => {
-            const x = idx % GRID_SIZE
-            const y = Math.floor(idx / GRID_SIZE)
-            const cellPlayer = playerMap[`${x},${y}`] || null
-            const cellRuin   = ruinMap[`${x},${y}`]   || null
-            const isOwn      = cellPlayer?.id === player?.id
-            const cls        = cellPlayer ? HERO_CLASSES[cellPlayer.heroClass] : null
-
-            return (
-              <MapCell
-                key={`${x}-${y}`}
-                cellPlayer={cellPlayer}
-                cellRuin={cellRuin}
-                isOwn={isOwn}
-                heroClass={cls}
-                cellSize={cellSize}
-                onClick={() => {
-                  if (cellRuin)   { setSelectedRuin(cellRuin); setSelected(null) }
-                  else if (cellPlayer) { setSelected(cellPlayer); setSelectedRuin(null) }
-                }}
-              />
-            )
-          })}
-        </div>
+      {/* Фільтри */}
+      <div className="flex gap-1.5 px-3 py-2 overflow-x-auto shrink-0" style={{ scrollbarWidth: 'none' }}>
+        {FILTERS.map(f => (
+          <button
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            className={`
+              whitespace-nowrap text-xs font-mono px-2.5 py-1 rounded border transition-colors
+              ${filter === f.id
+                ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
+                : 'bg-[var(--bg3)] border-[var(--border)] text-[#666] hover:border-[var(--accent)]'
+              }
+            `}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
-      {/* ─── Нижня навігація ─── */}
+      {/* Сітка 31 поля */}
+      <div className="flex-1 overflow-y-auto px-3 pb-2">
+        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
+          {visibleFields.map(field => (
+            <FieldTile
+              key={field.id}
+              field={field}
+              currentPlayerId={player?.id}
+              onClick={() => { setSelected(field); setShowLb(false) }}
+            />
+          ))}
+        </div>
+        {visibleFields.length === 0 && (
+          <div className="text-center py-12 text-[#444] text-sm font-mono">
+            Немає полів за фільтром
+          </div>
+        )}
+      </div>
+
+      {/* Нижня навігація */}
       <div className="fixed bottom-0 left-0 right-0">
         <BottomNav
-          items={NAV_ITEMS.map(item => ({ ...item, badge: item.id === 'inbox' ? unreadMessages : 0 }))}
+          items={NAV_ITEMS.map(item => ({
+            ...item,
+            badge: item.id === 'inbox' ? unreadMessages : 0,
+          }))}
           active="map"
           onChange={handleNavChange}
         />
       </div>
 
-      {/* ─── Панель вибраного гравця ─── */}
-      {selected && !showLeaderboard && (
-        <PlayerPanel
-          player={selected}
-          isOwn={selected.id === player?.id}
+      {/* Toast */}
+      {toast && (
+        <div className={`
+          fixed top-16 left-1/2 -translate-x-1/2 z-50
+          px-4 py-2 rounded-xl text-sm font-mono font-semibold
+          border shadow-lg animate-slide-up
+          ${toast.type === 'neon'
+            ? 'bg-[rgba(0,255,136,0.15)] border-[var(--neon)] text-[var(--neon)]'
+            : 'bg-[rgba(255,69,0,0.15)] border-[var(--accent)] text-[var(--accent)]'
+          }
+        `}>
+          {toast.text}
+        </div>
+      )}
+
+      {/* Деталі поля */}
+      {selected && !showLb && (
+        <FieldDetailPanel
+          field={selected}
+          player={player}
+          winChance={selected.type === 'ruin' ? calcWinChance(player, selected.tier) : null}
+          action={action}
           onClose={() => setSelected(null)}
-          onTrade={() => { navigate('/trade'); setSelected(null) }}
+          onExtract={() => handleExtract(selected)}
+          onAttack={() => handleAttack(selected)}
         />
       )}
 
-      {/* ─── Панель руїни ─── */}
-      {selectedRuin && !showLeaderboard && (
-        <RuinPanel
-          ruin={selectedRuin}
-          cooldownUntil={getRuinCooldown(selectedRuin.id)}
-          hasArmy={(player?.army?.formation?.length || 0) > 0}
-          winChance={calcWinChance(player, RUINS[`tier${selectedRuin.tier}`])}
-          attacking={attacking}
-          onClose={() => setSelectedRuin(null)}
-          onAttack={() => handleAttackRuin(selectedRuin)}
-        />
-      )}
-
-      {/* ─── Рейтинг групи ─── */}
-      {showLeaderboard && (
+      {/* Рейтинг */}
+      {showLb && (
         <LeaderboardPanel
           players={players}
           currentPlayerId={player?.id}
@@ -254,10 +268,10 @@ export default function WorldMap() {
         />
       )}
 
-      {/* ─── Бойовий екран ─── */}
+      {/* Бойовий екран */}
       {battle && (
         <BattleScreen
-          ruin={battle.ruin}
+          ruin={battle.field}
           battleData={battle.data}
           onClose={() => setBattle(null)}
         />
@@ -266,92 +280,98 @@ export default function WorldMap() {
   )
 }
 
-// ─── Клітинка карти ──────────────────────────────────────────
-function MapCell({ cellPlayer, cellRuin, isOwn, heroClass, cellSize, onClick }) {
-  const showName = cellSize >= 44
+// ─── Тайл поля ───────────────────────────────────────────────
+function FieldTile({ field, currentPlayerId, onClick }) {
+  const visual    = getFieldVisual(field)
+  const tier      = field.tier ? FIELD_TIERS[field.tier] : null
+  const timeLeft  = getFieldTimeLeft(field)
+  const isMine    = field.lastOccupiedBy === currentPlayerId
+  const isOccupied = Boolean(field.lastOccupiedBy) && !isMine
+  const isRuinDead = field.type === 'ruin' && field.ruinHP <= 0
 
-  const hasContent = cellPlayer || cellRuin
-  const tierColor  = cellRuin ? RUINS[`tier${cellRuin.tier}`]?.color : null
+  const borderColor = isRuinDead
+    ? '#222'
+    : isMine ? 'var(--accent)'
+    : field.type !== 'neutral' ? `${visual.color}44`
+    : 'var(--border)'
 
   return (
-    <div
+    <button
       onClick={onClick}
-      className={`
-        relative flex flex-col items-center justify-center
-        border-[0.5px] border-[var(--border)]
-        transition-all duration-150 select-none
-        ${hasContent ? 'cursor-pointer active:scale-95' : 'cursor-default'}
-        ${isOwn
-          ? 'bg-[rgba(255,69,0,0.12)]'
-          : cellRuin
-            ? 'bg-[rgba(255,165,0,0.06)] hover:bg-[rgba(255,165,0,0.12)]'
-            : cellPlayer
-              ? 'bg-[var(--bg3)] hover:bg-[rgba(255,255,255,0.04)]'
-              : 'bg-[var(--bg2)]'
-        }
-      `}
+      className="relative flex flex-col items-center justify-between rounded-lg border p-2 text-center transition-all duration-150 active:scale-95 hover:border-[var(--accent)]"
       style={{
-        width:     cellSize,
-        height:    cellSize,
-        boxShadow: isOwn
-          ? 'inset 0 0 0 2px var(--accent)'
-          : cellRuin
-            ? `inset 0 0 0 1px ${tierColor}44`
-            : undefined,
+        background: isRuinDead
+          ? 'var(--bg2)'
+          : field.type === 'resource'
+            ? `rgba(${hexToRgb(visual.color)},0.06)`
+            : field.type === 'ruin'
+              ? `rgba(${hexToRgb(visual.color)},0.05)`
+              : 'var(--bg2)',
+        borderColor,
+        minHeight: 82,
       }}
     >
-      {cellRuin ? (
-        <>
-          <span style={{ fontSize: Math.max(cellSize * 0.38, 12) }} className="leading-none">
-            {cellRuin.icon}
-          </span>
-          {showName && (
-            <span
-              className="absolute bottom-0.5 left-0 right-0 text-center truncate px-0.5 font-mono"
-              style={{ fontSize: Math.max(Math.floor(cellSize * 0.12), 6), color: tierColor || '#888' }}
-            >
-              T{cellRuin.tier}
-            </span>
-          )}
-        </>
-      ) : cellPlayer ? (
-        <>
-          <span style={{ fontSize: Math.max(cellSize * 0.38, 12) }} className="leading-none">
-            {heroClass?.icon || '🏘️'}
-          </span>
-          {showName && (
-            <span
-              className="absolute bottom-0.5 left-0 right-0 text-center truncate px-0.5"
-              style={{
-                fontSize: Math.max(Math.floor(cellSize * 0.13), 7),
-                color: isOwn ? 'var(--accent)' : '#666',
-                lineHeight: 1.2,
-              }}
-            >
-              {cellPlayer.heroName || cellPlayer.name.split(' ')[0]}
-            </span>
-          )}
-          {isOwn && (
-            <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
-          )}
-        </>
-      ) : (
-        <span className="text-[var(--border)]" style={{ fontSize: Math.max(cellSize * 0.2, 8) }}>·</span>
+      {/* Іконка */}
+      <span className="text-[28px] leading-none" style={{ opacity: isRuinDead ? 0.25 : 1 }}>
+        {visual.icon}
+      </span>
+
+      {/* Назва */}
+      <div className="mt-1 w-full space-y-0.5">
+        {tier && (
+          <div className="text-[9px] font-mono font-bold" style={{ color: tier.color }}>
+            {tier.label}
+          </div>
+        )}
+        <div className="text-[9px] font-mono leading-tight text-[#555] truncate px-0.5">
+          {truncate(visual.name, 11)}
+        </div>
+      </div>
+
+      {/* Таймер */}
+      {timeLeft && (
+        <div className="text-[8px] font-mono text-[#3a3a4a] mt-0.5">⏱ {timeLeft}</div>
       )}
-    </div>
+
+      {/* Мій маркер */}
+      {isMine && !isRuinDead && (
+        <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+      )}
+      {/* Зайнятий */}
+      {isOccupied && field.type === 'resource' && (
+        <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#444]" />
+      )}
+
+      {/* HP bar для руїн */}
+      {field.type === 'ruin' && !isRuinDead && field.ruinHP !== null && (
+        <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b overflow-hidden">
+          <div
+            className="h-full"
+            style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color, opacity: 0.7 }}
+          />
+        </div>
+      )}
+
+      {/* Знищено overlay */}
+      {isRuinDead && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-lg">
+          <span className="text-[9px] font-mono text-[#333]">знищено</span>
+        </div>
+      )}
+    </button>
   )
 }
 
-// ─── Панель руїни (знизу) ─────────────────────────────────────
-function RuinPanel({ ruin, cooldownUntil, hasArmy, winChance, attacking, onClose, onAttack }) {
-  const ruinConfig = RUINS[`tier${ruin.tier}`]
-  const tierColor  = ruinConfig?.color || '#888'
-
-  function formatCooldown(date) {
-    const hours = Math.ceil((date.getTime() - Date.now()) / 3600000)
-    if (hours < 1) return 'менше 1 год.'
-    return `${hours} год.`
-  }
+// ─── Деталі поля ─────────────────────────────────────────────
+function FieldDetailPanel({ field, player, winChance, action, onClose, onExtract, onAttack }) {
+  const visual     = getFieldVisual(field)
+  const tier       = field.tier ? FIELD_TIERS[field.tier] : null
+  const timeLeft   = getFieldTimeLeft(field)
+  const ruinConfig = field.type === 'ruin' ? RUINS[`tier${field.tier}`] : null
+  const isMine     = field.lastOccupiedBy === player?.id
+  const isOccupied = Boolean(field.lastOccupiedBy) && !isMine
+  const isRuinDead = field.type === 'ruin' && field.ruinHP <= 0
+  const hasArmy    = (player?.army?.formation?.length || 0) > 0
 
   return (
     <>
@@ -359,83 +379,137 @@ function RuinPanel({ ruin, cooldownUntil, hasArmy, winChance, attacking, onClose
       <div className="fixed bottom-[56px] left-0 right-0 z-40 animate-slide-up">
         <div
           className="mx-2 mb-2 rounded-xl border overflow-hidden"
-          style={{ background: 'rgba(18,18,30,0.97)', backdropFilter: 'blur(12px)', borderColor: `${tierColor}44` }}
+          style={{
+            background: 'rgba(12,12,20,0.98)',
+            backdropFilter: 'blur(16px)',
+            borderColor: `${visual.color}44`,
+          }}
           onClick={e => e.stopPropagation()}
         >
           {/* Шапка */}
-          <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: `${tierColor}33` }}>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{ruin.icon}</span>
+          <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: `${visual.color}22` }}>
+            <div className="flex items-center gap-2.5">
+              <span className="text-3xl">{visual.icon}</span>
               <div>
-                <div className="font-bebas text-base text-white tracking-wide leading-tight">{ruin.name}</div>
-                <div className="text-xs" style={{ color: tierColor }}>Тір {ruin.tier} · {ruinConfig?.xpReward} XP</div>
+                <div className="font-bebas text-[17px] text-white tracking-wide leading-tight">{visual.name}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {tier && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border"
+                      style={{ color: tier.color, borderColor: `${tier.color}44`, background: `${tier.color}11` }}>
+                      {tier.label}
+                    </span>
+                  )}
+                  {timeLeft && <span className="text-[10px] font-mono text-[#444]">⏱ {timeLeft}</span>}
+                </div>
               </div>
             </div>
             <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-[#555] hover:text-white">✕</button>
           </div>
 
-          {/* Опис */}
-          <div className="px-3 pt-2">
-            <p className="text-xs text-[#666] italic leading-relaxed">{ruin.description}</p>
+          <div className="p-3 space-y-3">
+
+            {/* РЕСУРСНЕ */}
+            {field.type === 'resource' && (
+              <>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[#555]">Ресурс</span>
+                  <span style={{ color: visual.color }} className="font-mono">{visual.icon} {field.resourceType}</span>
+                </div>
+                {field.extractionBonus > 0 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[#555]">Бонус</span>
+                    <span className="text-[var(--neon)] font-mono">+{field.extractionBonus}%</span>
+                  </div>
+                )}
+                {isMine && (
+                  <div className="text-[10px] text-[var(--accent)] font-mono bg-[rgba(255,69,0,0.08)] rounded p-1.5">
+                    ✓ Вже видобував в поточному циклі
+                  </div>
+                )}
+                {isOccupied && (
+                  <div className="text-[10px] text-[#555] font-mono bg-[var(--bg3)] rounded p-1.5">
+                    ⚠ Зайнято іншим гравцем
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* РУЇНА */}
+            {field.type === 'ruin' && ruinConfig && (
+              <>
+                {!isRuinDead && (
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-mono mb-1">
+                      <span className="text-[#555]">HP руїни</span>
+                      <span style={{ color: visual.color }}>{field.ruinHP ?? 100}%</span>
+                    </div>
+                    <div className="h-2 bg-[var(--bg)] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color }} />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[10px] text-[#444] uppercase tracking-wider mb-1.5">Охорона</p>
+                  <div className="flex flex-wrap gap-1">
+                    {ruinConfig.enemyArmy?.map((u, i) => {
+                      const unit = UNITS[u.unitId]
+                      return (
+                        <span key={i} className="text-[10px] bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5 font-mono">
+                          {unit?.icon} ×{u.count} рів.{u.level}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {hasArmy && winChance !== null && !isRuinDead && (
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-mono mb-1">
+                      <span className="text-[#555]">Шанс перемоги</span>
+                      <span style={{ color: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)' }}>
+                        {winChance}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-[var(--bg)] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{
+                        width: `${winChance}%`,
+                        background: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)',
+                      }} />
+                    </div>
+                    <div className="text-[10px] text-[#444] mt-1 text-right">
+                      {winChance >= 75 ? 'Висока перевага' : winChance >= 50 ? 'Рівний бій' : winChance >= 30 ? 'Ризиковано' : 'Дуже небезпечно'}
+                    </div>
+                  </div>
+                )}
+
+                {isRuinDead && (
+                  <p className="text-center text-xs text-[#333] font-mono">Руїну знищено — відновиться при рефреші</p>
+                )}
+              </>
+            )}
+
+            {/* НЕЙТРАЛЬНЕ */}
+            {field.type === 'neutral' && (
+              <p className="text-xs text-[#444] text-center py-1">
+                Нейтральна зона. Активується після наступного рефрешу.
+              </p>
+            )}
           </div>
 
-          {/* Ворожа армія */}
-          <div className="px-3 py-2">
-            <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1.5">Охорона руїни</p>
-            <div className="flex flex-wrap gap-1.5">
-              {ruinConfig?.enemyArmy?.map((u, i) => {
-                const unit = UNITS[u.unitId]
-                return (
-                  <span key={i} className="text-xs bg-[var(--bg3)] border border-[var(--border)] rounded px-2 py-0.5 font-mono">
-                    {unit?.icon} {unit?.name} ×{u.count} рів.{u.level}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Шанс перемоги */}
-          {hasArmy && winChance !== null && !cooldownUntil && (
-            <div className="px-3 pb-2">
-              <div className="flex items-center justify-between text-xs font-mono mb-1">
-                <span className="text-[#555]">Шанс перемоги</span>
-                <span style={{ color: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)' }}>
-                  {winChance}%
-                </span>
-              </div>
-              <div className="h-2 bg-[var(--bg)] rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${winChance}%`,
-                    background: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)',
-                  }}
-                />
-              </div>
-              <div className="text-[10px] text-[#444] mt-1 text-center">
-                {winChance >= 75 ? 'Висока перевага' : winChance >= 50 ? 'Рівний бій' : winChance >= 30 ? 'Ризиковано' : 'Дуже небезпечно'}
-              </div>
-            </div>
-          )}
-
-          {/* Кнопка атаки */}
-          <div className="p-3 pt-1">
-            {cooldownUntil ? (
-              <div className="text-center text-xs text-[#555] py-2 font-mono">
-                ⏳ Кулдаун: ще {formatCooldown(cooldownUntil)}
-              </div>
-            ) : !hasArmy ? (
-              <div className="text-center text-xs text-[var(--accent)] py-2">
-                Сформуй армію в місті перед атакою
-              </div>
-            ) : (
-              <button
-                className="w-full btn btn-accent text-sm"
-                disabled={attacking}
-                onClick={onAttack}
-              >
-                {attacking ? '⚔️ Бій...' : '⚔️ АТАКУВАТИ'}
+          {/* Кнопки */}
+          <div className="px-3 pb-3">
+            {field.type === 'resource' && !isMine && !isOccupied && (
+              <button className="w-full btn btn-neon text-sm" disabled={!!action} onClick={onExtract}>
+                {action === 'extracting' ? '⛏️ Видобуваємо...' : '⛏️ ВИДОБУТИ РЕСУРСИ'}
               </button>
+            )}
+            {field.type === 'ruin' && !isRuinDead && (
+              !hasArmy
+                ? <p className="text-center text-xs text-[var(--accent)]">Сформуй армію в місті перед атакою</p>
+                : <button className="w-full btn btn-accent text-sm" disabled={!!action} onClick={onAttack}>
+                    {action === 'attacking' ? '⚔️ Бій...' : '⚔️ АТАКУВАТИ РУЇНУ'}
+                  </button>
             )}
           </div>
         </div>
@@ -444,61 +518,37 @@ function RuinPanel({ ruin, cooldownUntil, hasArmy, winChance, attacking, onClose
   )
 }
 
-// ─── Рейтинг групи (знизу) ────────────────────────────────────
+// ─── Рейтинг ─────────────────────────────────────────────────
 function LeaderboardPanel({ players, currentPlayerId, onClose }) {
-  const sorted = [...players].sort((a, b) => (b.heroXP || 0) - (a.heroXP || 0))
-
-  const rankStyle = ['text-[var(--gold)]', 'text-[#aaa]', 'text-[#cd7f32]']
+  const sorted     = [...players].sort((a, b) => (b.heroXP || 0) - (a.heroXP || 0))
+  const rankColors = ['text-[var(--gold)]', 'text-[#aaa]', 'text-[#cd7f32]']
 
   return (
     <>
       <div className="fixed inset-0 z-30" onClick={onClose} />
-
       <div className="fixed bottom-[56px] left-0 right-0 z-40 animate-slide-up">
-        <div
-          className="mx-2 mb-2 rounded-xl border border-[var(--border)] overflow-hidden"
-          style={{ background: 'rgba(18,18,30,0.97)', backdropFilter: 'blur(12px)' }}
-          onClick={e => e.stopPropagation()}
-        >
-          {/* Шапка */}
+        <div className="mx-2 mb-2 rounded-xl border border-[var(--border)] overflow-hidden"
+          style={{ background: 'rgba(12,12,20,0.98)', backdropFilter: 'blur(16px)' }}
+          onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
-            <span className="font-bebas text-lg tracking-widest text-[var(--gold)]">🏆 РЕЙТИНГ РЕГІОНУ</span>
-            <button
-              onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center text-[#555] hover:text-white rounded"
-            >
-              ✕
-            </button>
+            <span className="font-bebas text-lg tracking-widest text-[var(--gold)]">🏆 РЕЙТИНГ</span>
+            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-[#555] hover:text-white">✕</button>
           </div>
-
-          {/* Список */}
-          <div className="overflow-y-auto max-h-64 divide-y divide-[var(--border)]">
+          <div className="overflow-y-auto max-h-60 divide-y divide-[var(--border)]">
             {sorted.map((p, i) => {
-              const cls    = HERO_CLASSES[p.heroClass] || HERO_CLASSES.guardian
-              const level  = getHeroLevel(p.heroXP || 0)
-              const isOwn  = p.id === currentPlayerId
+              const cls   = HERO_CLASSES[p.heroClass] || HERO_CLASSES.guardian
+              const level = getHeroLevel(p.heroXP || 0)
+              const isOwn = p.id === currentPlayerId
               return (
-                <div
-                  key={p.id}
-                  className={`flex items-center gap-3 px-3 py-2 ${isOwn ? 'bg-[rgba(255,69,0,0.07)]' : ''}`}
-                >
-                  {/* Ранг */}
-                  <span className={`font-bebas text-lg w-6 text-center ${rankStyle[i] || 'text-[#444]'}`}>
-                    {i + 1}
-                  </span>
-                  {/* Клас */}
+                <div key={p.id} className={`flex items-center gap-3 px-3 py-2 ${isOwn ? 'bg-[rgba(255,69,0,0.06)]' : ''}`}>
+                  <span className={`font-bebas text-lg w-6 text-center ${rankColors[i] || 'text-[#444]'}`}>{i + 1}</span>
                   <span className="text-xl w-7 text-center">{cls.icon}</span>
-                  {/* Ім'я */}
                   <div className="flex-1 min-w-0">
-                    <div className={`font-semibold text-sm truncate ${isOwn ? 'text-[var(--accent)]' : 'text-white'}`}>
-                      {p.heroName}
-                      {isOwn && <span className="ml-1 text-[10px] text-[var(--accent)] opacity-70">(ти)</span>}
-                    </div>
+                    <div className={`font-semibold text-sm truncate ${isOwn ? 'text-[var(--accent)]' : 'text-white'}`}>{p.heroName}</div>
                     <div className="text-xs text-[#555] truncate">{p.name}</div>
                   </div>
-                  {/* Рівень + XP */}
                   <div className="text-right shrink-0">
-                    <div className="font-mono text-sm text-[var(--gold)]">Рів. {level}</div>
+                    <div className="font-mono text-sm text-[var(--gold)]">Рів.{level}</div>
                     <div className="text-[10px] text-[#444] font-mono">{p.heroXP || 0} XP</div>
                   </div>
                 </div>
@@ -511,98 +561,15 @@ function LeaderboardPanel({ players, currentPlayerId, onClose }) {
   )
 }
 
-// ─── Панель гравця (знизу) ────────────────────────────────────
-function PlayerPanel({ player, isOwn, onClose, onTrade }) {
-  const cls = HERO_CLASSES[player.heroClass] || HERO_CLASSES.guardian
+// ─── Утиліти ─────────────────────────────────────────────────
+function truncate(str, len) {
+  return str && str.length > len ? str.slice(0, len) + '…' : str
+}
 
-  // Топ-3 будівлі за рівнем
-  const topBuildings = Object.entries(player.buildings || {})
-    .filter(([, b]) => b.level > 0)
-    .sort((a, b) => b[1].level - a[1].level)
-    .slice(0, 3)
-
-  // Назви будівель (спрощені)
-  const BUILDING_NAMES = {
-    server:   'Сервер',
-    lab:      'Лабораторія',
-    tower:    'Вежа',
-    archive:  'Сховище',
-    firewall: 'Брандмауер',
-  }
-
-  return (
-    <>
-      {/* Фон */}
-      <div
-        className="fixed inset-0 z-30"
-        style={{ background: 'transparent' }}
-        onClick={onClose}
-      />
-
-      {/* Панель */}
-      <div className="fixed bottom-[56px] left-0 right-0 z-40 animate-slide-up">
-        <div
-          className="mx-2 mb-2 rounded-xl border border-[var(--border)] overflow-hidden"
-          style={{ background: 'rgba(18,18,30,0.97)', backdropFilter: 'blur(12px)' }}
-          onClick={e => e.stopPropagation()}
-        >
-          {/* Шапка панелі */}
-          <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{cls.icon}</span>
-              <div>
-                <div className="font-bebas text-lg text-white tracking-wide leading-tight">
-                  {player.heroName}
-                  {isOwn && <span className="ml-2 text-xs text-[var(--accent)] font-raj">(ваше місто)</span>}
-                </div>
-                <div className="text-xs text-[#666]">
-                  {player.name} · {cls.name} · Рівень {player.heroLevel || 1}
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center text-[#555] hover:text-white rounded"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Тіло панелі */}
-          <div className="p-3 flex items-center justify-between gap-3">
-            {/* Будівлі */}
-            {topBuildings.length > 0 ? (
-              <div className="flex gap-2">
-                {topBuildings.map(([id, b]) => (
-                  <div key={id} className="flex flex-col items-center gap-0.5 bg-[var(--bg3)] rounded px-2 py-1">
-                    <span className="text-xs text-[#888]">{BUILDING_NAMES[id] || id}</span>
-                    <div className="flex gap-0.5">
-                      {[1, 2, 3].map(lvl => (
-                        <div
-                          key={lvl}
-                          className={`w-1.5 h-1.5 rounded-full ${lvl <= b.level ? 'bg-[var(--gold)]' : 'bg-[var(--border)]'}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className="text-xs text-[#555] italic">Будівлі ще не збудовані</span>
-            )}
-
-            {/* Кнопка торгівлі */}
-            {!isOwn && (
-              <button
-                onClick={onTrade}
-                className="btn btn-neon text-sm py-2 px-4 shrink-0"
-              >
-                🔄 Торгувати
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  )
+function hexToRgb(hex) {
+  if (!hex || hex.length < 7) return '128,128,128'
+  const r = parseInt(hex.slice(1, 3), 16) || 128
+  const g = parseInt(hex.slice(3, 5), 16) || 128
+  const b = parseInt(hex.slice(5, 7), 16) || 128
+  return `${r},${g},${b}`
 }
