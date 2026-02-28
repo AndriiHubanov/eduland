@@ -1,36 +1,3 @@
-// ─── Firebase конфігурація ───
-// Змінні беруться з .env файлу (ніколи не хардкодити ключі!)
-
-import { initializeApp } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
-import { getStorage } from 'firebase/storage'
-
-const firebaseConfig = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
-}
-
-// Перевірка наявності конфігурації
-export const isFirebaseConfigured = Boolean(
-  firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId
-)
-
-if (!isFirebaseConfigured) {
-  console.warn(
-    '[Firebase] Змінні оточення не знайдені. ' +
-    'Перевірте .env файл локально або GitHub Secrets у налаштуваннях репозиторію.'
-  )
-}
-
-// Ініціалізація Firebase
-const app = initializeApp(firebaseConfig)
-
-// Сервіси
-export const db      = getFirestore(app)
-export const storage = getStorage(app)
-
-export default app
+// Конфігурація перенесена в service.js
+// Цей файл залишений для сумісності з іншими сервісами
+export { db, storage, isFirebaseConfigured } from './service'

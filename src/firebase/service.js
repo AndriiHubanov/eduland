@@ -1,12 +1,34 @@
 // ─── Firebase Service ───
 // Всі операції з Firestore ТІЛЬКИ через цей файл
 
+import { initializeApp } from 'firebase/app'
 import {
+  getFirestore,
   collection, doc, getDoc, getDocs, setDoc, updateDoc,
   addDoc, query, where, onSnapshot, serverTimestamp,
   runTransaction, writeBatch,
 } from 'firebase/firestore'
-import { db, isFirebaseConfigured } from './config'
+import { getStorage } from 'firebase/storage'
+
+// ─── Firebase конфігурація ───
+const _config = {
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+}
+
+export const isFirebaseConfigured = Boolean(_config.apiKey && _config.projectId && _config.appId)
+
+if (!isFirebaseConfigured) {
+  console.warn('[Firebase] Змінні оточення не знайдені. Перевірте .env або GitHub Secrets.')
+}
+
+const _app     = initializeApp(_config)
+export const db      = getFirestore(_app)
+export const storage = getStorage(_app)
 
 // ─── Константи ───────────────────────────────────────────────
 
