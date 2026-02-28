@@ -1,4 +1,4 @@
-// ─── WorldMap — Фаза 10: Місії на поля з таймерами ───
+// ─── WorldMap — Фаза 14: Візуальна карта терену ───
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -32,6 +32,32 @@ const FILTERS = [
   { id: 'available', label: '✅ Вільні'  },
   { id: 'mine',      label: '📌 Мої'     },
 ]
+
+// ─── Карта: константи ─────────────────────────────────────────
+const MAP_SIZE  = 800
+const CELL_SIZE = MAP_SIZE / 10   // 80px — для city positions (0-9 → пікселі)
+
+// 31 фіксована позиція [x, y] для полів (за полем field.index 0-30)
+const FIELD_POSITIONS = [
+  [100,  80], [250,  65], [420,  90], [600,  70], [740, 110],  // 0-4
+  [ 60, 200], [190, 170], [360, 180], [530, 200], [700, 190],  // 5-9
+  [130, 310], [300, 290], [460, 320], [630, 300], [760, 330],  // 10-14
+  [200, 420], [380, 400], [560, 420], [ 80, 490], [250, 480],  // 15-19
+  [430, 510], [620, 490], [740, 500], [160, 600], [340, 620],  // 20-24
+  [510, 600], [680, 620], [100, 710], [280, 720], [450, 710],  // 25-29
+  [640, 700],                                                   // 30
+]
+
+const TERRAIN_BG = [
+  'radial-gradient(ellipse at 15% 15%, rgba(20,50,15,0.9) 0%, transparent 40%)',
+  'radial-gradient(ellipse at 85% 25%, rgba(15,45,12,0.8) 0%, transparent 35%)',
+  'radial-gradient(ellipse at 30% 70%, rgba(22,52,18,0.8) 0%, transparent 45%)',
+  'radial-gradient(ellipse at 75% 80%, rgba(18,48,14,0.7) 0%, transparent 40%)',
+  'radial-gradient(ellipse at 55% 45%, rgba(12,40,10,0.6) 0%, transparent 50%)',
+  'radial-gradient(ellipse at 10% 90%, rgba(20,55,15,0.7) 0%, transparent 35%)',
+  'radial-gradient(ellipse at 90% 60%, rgba(16,45,12,0.7) 0%, transparent 38%)',
+  'linear-gradient(160deg, #091a09 0%, #071408 50%, #0a1c0a 100%)',
+].join(', ')
 
 // ─── Шанс перемоги ───────────────────────────────────────────
 function calcWinChance(player, ruinTier) {
@@ -74,8 +100,8 @@ export default function WorldMap() {
 
   const [fields, setFields]       = useState([])
   const [players, setPlayers]     = useState([])
-  const [myExps, setMyExps]       = useState([])    // місії поточного гравця
-  const [groupExps, setGroupExps] = useState([])   // всі місії групи (для відображення на тайлах)
+  const [myExps, setMyExps]       = useState([])
+  const [groupExps, setGroupExps] = useState([])
   const [loading, setLoading]     = useState(true)
   const [filter, setFilter]       = useState('all')
   const [selected, setSelected]   = useState(null)
@@ -83,15 +109,30 @@ export default function WorldMap() {
   const [action, setAction]       = useState(null)
   const [battle, setBattle]       = useState(null)
   const [toast, setToast]         = useState(null)
-  const [tick, setTick]           = useState(0)     // для оновлення таймерів
+  const [tick, setTick]           = useState(0)
 
-  const tickRef = useRef(null)
+  const tickRef   = useRef(null)
+  const scrollRef = useRef(null)
 
   // Таймер — оновлюємо UI кожну секунду
   useEffect(() => {
     tickRef.current = setInterval(() => setTick(t => t + 1), 1000)
     return () => clearInterval(tickRef.current)
   }, [])
+
+  // Центрування карти на місті гравця при завантаженні
+  useEffect(() => {
+    if (!scrollRef.current) return
+    const el = scrollRef.current
+    let cx = MAP_SIZE / 2
+    let cy = MAP_SIZE / 2
+    if (player?.cityPosition) {
+      cx = (player.cityPosition.x + 0.5) * CELL_SIZE
+      cy = (player.cityPosition.y + 0.5) * CELL_SIZE
+    }
+    el.scrollLeft = Math.max(0, cx - el.clientWidth  / 2)
+    el.scrollTop  = Math.max(0, cy - el.clientHeight / 2)
+  }, [player?.cityPosition, loading])
 
   // Авто-resolve готових місій
   useEffect(() => {
@@ -127,12 +168,10 @@ export default function WorldMap() {
     if (routes[tabId]) navigate(routes[tabId])
   }
 
-  // Знайти місію гравця для поля
   function getMyExpForField(fieldId) {
     return myExps.find(e => e.fieldId === fieldId) || null
   }
 
-  // Зайнятість поля іншим гравцем
   function getOtherExpForField(fieldId) {
     return groupExps.find(e => e.fieldId === fieldId && e.playerId !== player?.id) || null
   }
@@ -188,15 +227,17 @@ export default function WorldMap() {
     }
   }
 
-  if (loading) return <Spinner text="Завантаження карти полів..." />
-
-  const visibleFields = fields.filter(f => {
-    if (filter === 'resource')  return f.type === 'resource'
-    if (filter === 'ruin')      return f.type === 'ruin'
-    if (filter === 'available') return !getMyExpForField(f.id) && !getOtherExpForField(f.id)
-    if (filter === 'mine')      return !!getMyExpForField(f.id)
+  // Фільтр видимості маркера (dimming замість приховування)
+  function isFieldVisible(field) {
+    if (filter === 'all')       return true
+    if (filter === 'resource')  return field.type === 'resource'
+    if (filter === 'ruin')      return field.type === 'ruin'
+    if (filter === 'available') return !getMyExpForField(field.id) && !getOtherExpForField(field.id)
+    if (filter === 'mine')      return !!getMyExpForField(field.id)
     return true
-  })
+  }
+
+  if (loading) return <Spinner text="Завантаження карти полів..." />
 
   const stats = {
     resource:  fields.filter(f => f.type === 'resource').length,
@@ -225,7 +266,6 @@ export default function WorldMap() {
 
         {/* Ресурси гравця + статистика полів */}
         <div className="flex items-center justify-between">
-          {/* Топ ресурси */}
           <div className="flex gap-2 flex-wrap">
             {[
               { icon: '🪙', val: player?.resources?.gold,   color: '#ffd700' },
@@ -242,7 +282,6 @@ export default function WorldMap() {
             )}
           </div>
 
-          {/* Статистика полів + місії */}
           <div className="flex gap-1.5 text-[10px] font-mono shrink-0">
             <span className="bg-[var(--bg3)] border border-[var(--border)] rounded px-1.5 py-0.5"
               style={{ color: '#00cc88' }}>⛏️{stats.resource}</span>
@@ -291,24 +330,89 @@ export default function WorldMap() {
         </div>
       )}
 
-      {/* Сітка полів */}
-      <div className="flex-1 overflow-y-auto px-3 pb-2">
-        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
-          {visibleFields.map(field => (
-            <FieldTile
-              key={field.id}
-              field={field}
-              myExp={getMyExpForField(field.id)}
-              otherExp={getOtherExpForField(field.id)}
-              currentPlayerId={player?.id}
-              tick={tick}
-              onClick={() => { setSelected(field); setShowLb(false) }}
-            />
-          ))}
+      {/* ─── Карта терену ─── */}
+      <div className="flex-1 relative overflow-hidden">
+        <div
+          ref={scrollRef}
+          className="w-full h-full overflow-auto"
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: '#1a2a1a transparent' }}
+        >
+          <div
+            className="relative"
+            style={{ width: MAP_SIZE, height: MAP_SIZE, background: TERRAIN_BG, flexShrink: 0 }}
+          >
+            {/* SVG: річки */}
+            <svg className="absolute inset-0 pointer-events-none" width={MAP_SIZE} height={MAP_SIZE}>
+              {/* Головна річка: діагональ зверху-праворуч до низу-ліворуч */}
+              <path
+                d="M 760 0 C 700 120, 600 160, 540 220 C 480 280, 460 340, 400 390 C 340 440, 280 470, 220 540 C 160 610, 140 660, 80 740"
+                stroke="#1a4565" strokeWidth="24" fill="none" opacity="0.6" strokeLinecap="round"
+              />
+              <path
+                d="M 760 0 C 700 120, 600 160, 540 220 C 480 280, 460 340, 400 390 C 340 440, 280 470, 220 540 C 160 610, 140 660, 80 740"
+                stroke="#0e2a40" strokeWidth="14" fill="none" opacity="0.85" strokeLinecap="round"
+              />
+              {/* Притока: зі сходу вливається в головну */}
+              <path
+                d="M 800 520 C 700 500, 630 480, 570 450 C 510 420, 470 400, 400 390"
+                stroke="#1a4565" strokeWidth="16" fill="none" opacity="0.5" strokeLinecap="round"
+              />
+              <path
+                d="M 800 520 C 700 500, 630 480, 570 450 C 510 420, 470 400, 400 390"
+                stroke="#0e2a40" strokeWidth="9" fill="none" opacity="0.75" strokeLinecap="round"
+              />
+              {/* Мала притока з півночі */}
+              <path
+                d="M 320 0 C 330 80, 350 140, 360 180"
+                stroke="#1a4565" strokeWidth="10" fill="none" opacity="0.4" strokeLinecap="round"
+              />
+              <path
+                d="M 320 0 C 330 80, 350 140, 360 180"
+                stroke="#0e2a40" strokeWidth="6" fill="none" opacity="0.6" strokeLinecap="round"
+              />
+            </svg>
+
+            {/* Маркери міст гравців */}
+            {players.map(p => {
+              if (!p.cityPosition) return null
+              const cx = (p.cityPosition.x + 0.5) * CELL_SIZE
+              const cy = (p.cityPosition.y + 0.5) * CELL_SIZE
+              return (
+                <CityMarker key={p.id} x={cx} y={cy} player={p} isOwn={p.id === player?.id} />
+              )
+            })}
+
+            {/* Маркери полів */}
+            {fields.map(field => {
+              const pos = FIELD_POSITIONS[field.index]
+              if (!pos) return null
+              return (
+                <FieldMarker
+                  key={field.id}
+                  field={field}
+                  x={pos[0]}
+                  y={pos[1]}
+                  myExp={getMyExpForField(field.id)}
+                  otherExp={getOtherExpForField(field.id)}
+                  tick={tick}
+                  visible={isFieldVisible(field)}
+                  onClick={() => { setSelected(field); setShowLb(false) }}
+                />
+              )
+            })}
+          </div>
         </div>
-        {visibleFields.length === 0 && (
-          <div className="text-center py-12 text-[#444] text-sm font-mono">Немає полів за фільтром</div>
-        )}
+
+        {/* Легенда */}
+        <div className="absolute top-2 right-2 bg-[rgba(0,0,0,0.75)] border border-[var(--border)] rounded-lg p-2 pointer-events-none">
+          <div className="text-[8px] font-mono text-[#444] uppercase tracking-wider mb-1">Легенда</div>
+          <div className="space-y-0.5 text-[9px] font-mono">
+            <div className="flex items-center gap-1.5"><span>⚡🧬💎💾🔐🪙</span><span className="text-[#555]">Ресурс</span></div>
+            <div className="flex items-center gap-1.5"><span>🏚️🏗️🏰</span><span className="text-[#555]">Руїна</span></div>
+            <div className="flex items-center gap-1.5"><span>🌫️</span><span className="text-[#555]">Нейтральне</span></div>
+            <div className="flex items-center gap-1.5"><span>🛡️</span><span className="text-[#555]">Місто</span></div>
+          </div>
+        </div>
       </div>
 
       {/* Нижня навігація */}
@@ -361,147 +465,136 @@ export default function WorldMap() {
   )
 }
 
-// ─── Тайл поля ───────────────────────────────────────────────
-// Tier кольори для градієнтів
-const TIER_GRADIENTS = {
-  1: { from: 'rgba(0,0,0,0)', glow: 0.05 },
-  2: { from: 'rgba(255,215,0,0.04)', glow: 0.08 },
-  3: { from: 'rgba(255,215,0,0.10)', glow: 0.14 },
-}
-
-function FieldTile({ field, myExp, otherExp, currentPlayerId, tick, onClick }) {
-  const visual     = getFieldVisual(field)
-  const tier       = field.tier ? FIELD_TIERS[field.tier] : null
-  const timeLeft   = getFieldTimeLeft(field)
-  const isRuinDead = field.type === 'ruin' && field.ruinHP <= 0
-  const tierGrad   = TIER_GRADIENTS[field.tier] || TIER_GRADIENTS[1]
-  const rgb        = hexToRgb(visual.color)
-
-  // Стан місії
+// ─── Маркер поля на карті ─────────────────────────────────────
+function FieldMarker({ field, x, y, myExp, otherExp, tick, visible, onClick }) {
+  const visual      = getFieldVisual(field)
+  const tier        = field.tier ? FIELD_TIERS[field.tier] : null
+  const isRuinDead  = field.type === 'ruin' && field.ruinHP <= 0
   const hasMyExp    = Boolean(myExp)
-  const hasOtherExp = Boolean(otherExp) && !hasMyExp
   const isReady     = myExp?.status === 'ready'
+  const hasOtherExp = Boolean(otherExp) && !hasMyExp
 
-  // Таймер місії + прогрес
   let expCountdown = null
-  let expProgress  = 0
   if (myExp?.status === 'active') {
-    const endsAt    = myExp.endsAt?.toDate    ? myExp.endsAt.toDate()    : new Date(myExp.endsAt)
-    const createdAt = myExp.createdAt?.toDate ? myExp.createdAt.toDate() : new Date(myExp.createdAt)
-    const total     = endsAt - createdAt
-    const elapsed   = Date.now() - createdAt
-    expProgress     = Math.min(100, Math.round(elapsed / total * 100))
-    expCountdown    = formatCountdown(endsAt - Date.now())
+    const endsAt = myExp.endsAt?.toDate ? myExp.endsAt.toDate() : new Date(myExp.endsAt)
+    expCountdown = formatCountdown(endsAt - Date.now())
   }
 
-  const expIcon = { scout: '🔭', extract: '⛏️', attack: '⚔️' }[myExp?.type] || ''
+  const SIZE = 44
 
-  // Колір рамки
   const borderColor = isReady
     ? 'var(--neon)'
     : hasMyExp
       ? 'var(--accent)'
-      : field.type === 'ruin' && !isRuinDead
-        ? `rgba(${rgb},0.35)`
-        : field.type !== 'neutral'
-          ? `rgba(${rgb},0.28)`
-          : 'var(--border)'
+      : tier
+        ? `${tier.color}99`
+        : '#2a2a2a'
 
-  // Фон тайла
-  const tileBackground = isReady
-    ? 'rgba(0,255,136,0.07)'
-    : isRuinDead
-      ? 'var(--bg2)'
-      : field.type === 'resource'
-        ? `linear-gradient(160deg, rgba(${rgb},${tierGrad.glow}) 0%, rgba(${rgb},0.02) 100%)`
-        : field.type === 'ruin'
-          ? `linear-gradient(160deg, rgba(${rgb},${tierGrad.glow * 0.9}) 0%, rgba(${rgb},0.02) 100%)`
-          : 'var(--bg2)'
-
-  // CSS-клас для tier glow
-  const tierClass = !isRuinDead && field.tier === 3 ? 'field-tier-3' : field.tier === 2 ? 'field-tier-2' : ''
+  const bg = isRuinDead
+    ? 'rgba(0,0,0,0.55)'
+    : isReady
+      ? 'rgba(0,255,136,0.18)'
+      : hasMyExp
+        ? 'rgba(255,69,0,0.15)'
+        : 'rgba(0,0,0,0.58)'
 
   return (
     <button
       onClick={onClick}
-      className={`relative flex flex-col items-center justify-between rounded-lg border p-2 text-center transition-all duration-150 active:scale-95 hover:brightness-110 ${
-        field.type === 'ruin' && !isRuinDead && !hasMyExp && !isReady ? 'animate-ruin-pulse' : ''
-      } ${isReady ? 'animate-neon-pulse' : ''} ${tierClass}`}
+      className="absolute flex flex-col items-center justify-center rounded-full border transition-all duration-150 active:scale-90 hover:brightness-125"
       style={{
-        background: tileBackground,
+        left: x - SIZE / 2,
+        top:  y - SIZE / 2,
+        width:  SIZE,
+        height: SIZE,
+        background:  bg,
         borderColor,
-        minHeight: 84,
+        borderWidth: isReady ? 2 : 1.5,
+        opacity:    visible ? 1 : 0.15,
+        boxShadow:  isReady
+          ? '0 0 14px var(--neon)'
+          : tier?.color
+            ? `0 0 8px ${tier.color}55`
+            : 'none',
+        backdropFilter: 'blur(4px)',
+        zIndex: isReady ? 10 : hasMyExp ? 8 : 5,
       }}
     >
-      {/* Tier badge в лівому куті */}
+      {/* Іконка */}
+      <span className="text-xl leading-none" style={{ opacity: isRuinDead ? 0.25 : 1 }}>
+        {visual.icon}
+      </span>
+
+      {/* Tier badge */}
       {tier && (
-        <div className="absolute top-1 left-1 text-[7px] font-mono font-bold leading-none px-0.5 py-px rounded"
-          style={{ color: tier.color, background: `${tier.color}22` }}>
+        <div
+          className="absolute bottom-0 right-0 translate-x-1 translate-y-1 text-[7px] font-mono font-bold px-0.5 rounded"
+          style={{ color: tier.color, background: `${tier.color}33`, border: `1px solid ${tier.color}55` }}
+        >
           {tier.label}
         </div>
       )}
 
-      {/* Іконка */}
-      <span
-        className="text-[26px] leading-none mt-2"
-        style={{
-          opacity: isRuinDead ? 0.2 : 1,
-          filter: field.tier === 3 && !isRuinDead ? `drop-shadow(0 0 4px rgba(${rgb},0.6))` : 'none',
-        }}
-      >
-        {visual.icon}
-      </span>
-
-      {/* Назва */}
-      <div className="mt-0.5 w-full">
-        <div className="text-[8px] font-mono leading-tight text-[#555] truncate px-0.5">{truncate(visual.name, 12)}</div>
-      </div>
-
-      {/* Статус місії / таймер поля */}
-      <div className="mt-0.5 h-[13px] flex items-center justify-center">
-        {isReady ? (
-          <span className="text-[8px] font-mono text-[var(--neon)] animate-pulse">{expIcon} Готово!</span>
-        ) : hasMyExp ? (
-          <span className="text-[8px] font-mono text-[var(--accent)]">{expIcon} {expCountdown}</span>
-        ) : timeLeft ? (
-          <span className="text-[7px] font-mono text-[#333]">⏱ {timeLeft}</span>
-        ) : (
-          <span className="text-[7px] font-mono text-[#2a2a3a]">вільне</span>
-        )}
-      </div>
-
-      {/* Dot маркер — правий верхній кут */}
+      {/* Статус dot */}
       {isReady && (
-        <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[var(--neon)] animate-pulse shadow-[0_0_6px_var(--neon)]" />
+        <div className="absolute top-0 right-0 -translate-y-0.5 translate-x-0.5 w-2.5 h-2.5 rounded-full bg-[var(--neon)] animate-pulse shadow-[0_0_6px_var(--neon)]" />
       )}
       {hasMyExp && !isReady && (
-        <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+        <div className="absolute top-0 right-0 -translate-y-0.5 translate-x-0.5 w-2 h-2 rounded-full bg-[var(--accent)]" />
       )}
-      {hasOtherExp && !hasMyExp && (
-        <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#444]" />
+      {hasOtherExp && (
+        <div className="absolute top-0 right-0 -translate-y-0.5 translate-x-0.5 w-2 h-2 rounded-full bg-[#555]" />
       )}
 
-      {/* Прогрес-бар місії (якщо active) */}
-      {hasMyExp && !isReady && (
-        <div className="field-progress">
-          <div className="field-progress-fill" style={{ width: `${expProgress}%`, background: 'var(--accent)' }} />
+      {/* Countdown під маркером */}
+      {myExp?.status === 'active' && expCountdown && (
+        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[7px] font-mono text-[var(--accent)] whitespace-nowrap pointer-events-none">
+          {expCountdown}
         </div>
       )}
 
-      {/* HP bar руїни */}
-      {field.type === 'ruin' && !isRuinDead && !hasMyExp && field.ruinHP !== null && (
-        <div className="field-progress">
-          <div className="field-progress-fill" style={{ width: `${field.ruinHP ?? 100}%`, background: visual.color, opacity: 0.7 }} />
-        </div>
-      )}
-
-      {/* Знищено overlay */}
+      {/* Руїна знищена */}
       {isRuinDead && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-[rgba(0,0,0,0.4)]">
-          <span className="text-[8px] font-mono text-[#333] tracking-widest uppercase">знищено</span>
+        <div className="absolute inset-0 flex items-center justify-center rounded-full">
+          <span className="text-[8px] font-mono text-[#333]">✕</span>
         </div>
       )}
     </button>
+  )
+}
+
+// ─── Маркер міста гравця ──────────────────────────────────────
+function CityMarker({ x, y, player, isOwn }) {
+  const cls = HERO_CLASSES[player.heroClass] || HERO_CLASSES.guardian
+  const SIZE = 40
+
+  return (
+    <div
+      className="absolute flex flex-col items-center pointer-events-none"
+      style={{ left: x - SIZE / 2, top: y - SIZE / 2, zIndex: 20 }}
+    >
+      <div
+        className="flex items-center justify-center rounded-lg text-lg"
+        style={{
+          width:  SIZE,
+          height: SIZE,
+          background: isOwn ? 'rgba(255,69,0,0.25)' : 'rgba(0,0,0,0.65)',
+          border: isOwn ? '2px solid var(--accent)' : '1.5px solid #3a3a3a',
+          boxShadow: isOwn ? '0 0 12px var(--accent)' : 'none',
+        }}
+      >
+        {cls.icon}
+      </div>
+      <div
+        className="mt-0.5 text-[7px] font-mono whitespace-nowrap px-1 rounded"
+        style={{
+          color:      isOwn ? 'var(--accent)' : '#555',
+          background: isOwn ? 'rgba(255,69,0,0.12)' : 'rgba(0,0,0,0.5)',
+        }}
+      >
+        {player.heroName || player.name}
+      </div>
+    </div>
   )
 }
 
@@ -514,7 +607,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
   const isRuinDead = field.type === 'ruin' && field.ruinHP <= 0
   const hasArmy    = (player?.army?.formation?.length || 0) > 0
 
-  // Рівні лабораторій
   const labLevels = {
     geolab:             player?.buildings?.geolab?.level              || 0,
     extraction_station: player?.buildings?.extraction_station?.level  || 0,
@@ -522,7 +614,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
     signal_tower:       player?.buildings?.signal_tower?.level        || 0,
   }
 
-  // Таймер місії
   let expCountdown = null
   let expProgress  = 0
   if (myExp?.status === 'active') {
@@ -537,8 +628,7 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
   const expIcons = { scout: '🔭', extract: '⛏️', attack: '⚔️' }
   const expNames = { scout: 'Розвідка', extract: 'Видобуток', attack: 'Штурм' }
 
-  // Todayʼs refreshes
-  const todayKey   = new Date().toISOString().split('T')[0]
+  const todayKey    = new Date().toISOString().split('T')[0]
   const usedRefresh = player?.fieldRefreshesToday?.[todayKey] || 0
   const maxRefresh  = labLevels.signal_tower
 
@@ -634,7 +724,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
             {/* ═══ Дії (якщо немає своєї місії) ═══ */}
             {!myExp && (
               <>
-                {/* Ресурсне поле */}
                 {field.type === 'resource' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
@@ -650,7 +739,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
                   </div>
                 )}
 
-                {/* Руїна */}
                 {field.type === 'ruin' && ruinConfig && !isRuinDead && (
                   <div className="space-y-2">
                     <div>
@@ -697,7 +785,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
                   </div>
                 )}
 
-                {/* Нейтральне */}
                 {field.type === 'neutral' && (
                   <p className="text-xs text-[#444] text-center py-1">
                     Нейтральна зона. Активується після наступного рефрешу.
@@ -707,10 +794,9 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
             )}
           </div>
 
-          {/* Кнопки дій (якщо немає активної місії) */}
+          {/* Кнопки дій */}
           {!myExp && (
             <div className="px-3 pb-3 space-y-2">
-              {/* Scout */}
               {labLevels.geolab >= 1 && field.type !== 'neutral' && (
                 <button className="w-full btn btn-secondary text-xs" disabled={!!action}
                   onClick={() => onStartExp(field.id, 'scout')}>
@@ -721,7 +807,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
                 <p className="text-center text-[10px] text-[#444] font-mono">Геолаб рів.1 — розвідка</p>
               )}
 
-              {/* Extract */}
               {field.type === 'resource' && (
                 labLevels.extraction_station >= 1 ? (
                   <button className="w-full btn btn-neon text-sm" disabled={!!action || !!otherExp}
@@ -733,7 +818,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
                 )
               )}
 
-              {/* Attack */}
               {field.type === 'ruin' && !isRuinDead && (
                 labLevels.assault_base >= 1 ? (
                   !hasArmy ? (
@@ -749,7 +833,6 @@ function FieldDetailPanel({ field, player, myExp, otherExp, winChance, action, t
                 )
               )}
 
-              {/* Force refresh */}
               {labLevels.signal_tower >= 1 && (
                 <button
                   className="w-full text-xs font-mono py-1.5 rounded border border-[var(--border)] text-[#555] hover:border-[var(--neon)] hover:text-[var(--neon)] transition-colors"
@@ -811,10 +894,6 @@ function LeaderboardPanel({ players, currentPlayerId, onClose }) {
 }
 
 // ─── Утиліти ─────────────────────────────────────────────────
-function truncate(str, len) {
-  return str && str.length > len ? str.slice(0, len) + '…' : str
-}
-
 function hexToRgb(hex) {
   if (!hex || hex.length < 7) return '128,128,128'
   return `${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)}`

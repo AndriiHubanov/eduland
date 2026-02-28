@@ -662,11 +662,53 @@ function StatsTab() {
 }
 
 // ─── ГРАВЦІ ───────────────────────────────────────────────────
+// Список ключових будівель для таблиці прогресу
+const PROGRESS_BUILDINGS = [
+  { id: 'server',    icon: '🖥️', label: 'Сервер'    },
+  { id: 'lab',       icon: '🧪', label: 'Лаб'       },
+  { id: 'tower',     icon: '📡', label: 'Вежа'      },
+  { id: 'archive',   icon: '🗄️', label: 'Архів'     },
+  { id: 'firewall',  icon: '🛡️', label: 'Файрвол'   },
+  { id: 'castle',    icon: '🏰', label: 'Замок'      },
+]
+
+function exportPlayersCSV(players) {
+  const headers = ['Імʼя', 'Герой', 'Рівень', 'Клас', 'XP', 'Золото', 'Bits', 'Energy', 'Bio',
+    'Сервер', 'Лаб', 'Вежа', 'Архів', 'Файрвол', 'Замок', 'Остання активність']
+  const rows = players.map(p => [
+    p.name || '',
+    p.heroName || '',
+    p.heroLevel || 1,
+    p.heroClass || '',
+    p.heroXP || 0,
+    p.resources?.gold || 0,
+    p.resources?.bits || 0,
+    p.resources?.energy || 0,
+    p.resources?.bio || 0,
+    p.buildings?.server?.level || 0,
+    p.buildings?.lab?.level || 0,
+    p.buildings?.tower?.level || 0,
+    p.buildings?.archive?.level || 0,
+    p.buildings?.firewall?.level || 0,
+    p.buildings?.castle?.level || 0,
+    p.lastActive?.toDate?.().toLocaleDateString('uk-UA') || '',
+  ])
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `players_${new Date().toISOString().split('T')[0]}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function PlayersTab() {
   const [players, setPlayers]     = useState([])
   const [loading, setLoading]     = useState(true)
   const [activeGroup, setGroup]   = useState('PD11')
   const [search, setSearch]       = useState('')
+  const [tableView, setTableView] = useState(false)
 
   useEffect(() => {
     getAllPlayers()
@@ -680,33 +722,112 @@ function PlayersTab() {
   const filtered = players
     .filter(p => p.group === activeGroup)
     .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => (b.heroXP || 0) - (a.heroXP || 0))
 
   return (
     <div className="flex flex-col gap-3 py-3">
       <Tabs tabs={groupTabs} active={activeGroup} onChange={setGroup} />
 
-      <input
-        className="input text-sm"
-        placeholder="Пошук за іменем..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-      />
+      <div className="flex gap-2">
+        <input
+          className="input text-sm flex-1"
+          placeholder="Пошук за іменем..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <button
+          className="text-xs font-mono px-2 py-1 rounded border border-[var(--border)] text-[#555] hover:border-[var(--neon)] hover:text-[var(--neon)] transition-colors whitespace-nowrap"
+          onClick={() => setTableView(v => !v)}
+        >
+          {tableView ? '🃏 Картки' : '📊 Таблиця'}
+        </button>
+        <button
+          className="text-xs font-mono px-2 py-1 rounded border border-[var(--border)] text-[#555] hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors whitespace-nowrap"
+          onClick={() => exportPlayersCSV(filtered)}
+          title="Завантажити CSV"
+        >
+          📥 CSV
+        </button>
+      </div>
 
-      <p className="text-xs text-[#555]">{filtered.length} гравців</p>
+      <p className="text-xs text-[#555]">{filtered.length} гравців (сортування по XP)</p>
 
       {filtered.length === 0 ? (
         <EmptyState icon="👥" text="Гравців не знайдено" />
+      ) : tableView ? (
+        /* ── Табличний вигляд ── */
+        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+          <table className="w-full text-[11px] font-mono">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--bg3)]">
+                <th className="text-left px-2 py-1.5 text-[#555]">#</th>
+                <th className="text-left px-2 py-1.5 text-[#555]">Імʼя</th>
+                <th className="text-left px-2 py-1.5 text-[#555]">Герой / Рів.</th>
+                <th className="text-left px-2 py-1.5 text-[#555]">XP</th>
+                {PROGRESS_BUILDINGS.map(b => (
+                  <th key={b.id} className="text-center px-1.5 py-1.5 text-[#555]" title={b.label}>{b.icon}</th>
+                ))}
+                <th className="text-left px-2 py-1.5 text-[#555]">🪙</th>
+                <th className="text-left px-2 py-1.5 text-[#555]">Активність</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p, i) => (
+                <tr key={p.id} className="border-b border-[var(--border)] hover:bg-[var(--bg3)] transition-colors">
+                  <td className="px-2 py-1.5 text-[#444]">{i + 1}</td>
+                  <td className="px-2 py-1.5 text-white font-semibold">{p.name}</td>
+                  <td className="px-2 py-1.5 text-[#888]">{p.heroName} · {p.heroLevel || 1}</td>
+                  <td className="px-2 py-1.5 text-[var(--gold)]">{p.heroXP || 0}</td>
+                  {PROGRESS_BUILDINGS.map(b => {
+                    const lvl = p.buildings?.[b.id]?.level || 0
+                    return (
+                      <td key={b.id} className="text-center px-1.5 py-1.5">
+                        <span style={{ color: lvl > 0 ? 'var(--neon)' : '#333' }}>{lvl > 0 ? lvl : '—'}</span>
+                      </td>
+                    )
+                  })}
+                  <td className="px-2 py-1.5 text-[#ffaa00]">{p.resources?.gold || 0}</td>
+                  <td className="px-2 py-1.5 text-[#444]">
+                    {p.lastActive?.toDate?.().toLocaleDateString('uk-UA') || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        filtered.map(p => (
+        /* ── Картковий вигляд ── */
+        filtered.map((p, i) => (
           <Card key={p.id}>
             <div className="flex items-start justify-between mb-2">
               <div>
-                <div className="font-semibold text-white">{p.name}</div>
-                <div className="text-xs text-[#888]">{p.heroName} · Рівень {p.heroLevel || 1}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-[#444]">#{i + 1}</span>
+                  <div className="font-semibold text-white">{p.name}</div>
+                </div>
+                <div className="text-xs text-[#888]">{p.heroName} · Рівень {p.heroLevel || 1} · {p.heroXP || 0} XP</div>
               </div>
               <div className="text-xs text-[#555]">
                 {p.lastActive?.toDate?.().toLocaleDateString('uk-UA')}
               </div>
+            </div>
+            {/* Прогрес будівель */}
+            <div className="flex gap-1 mb-2 flex-wrap">
+              {PROGRESS_BUILDINGS.map(b => {
+                const lvl = p.buildings?.[b.id]?.level || 0
+                return (
+                  <span key={b.id} className="text-[9px] font-mono px-1 py-0.5 rounded"
+                    style={{
+                      color:      lvl > 0 ? 'var(--neon)' : '#333',
+                      background: lvl > 0 ? 'rgba(0,255,136,0.08)' : 'var(--bg3)',
+                      border:     `1px solid ${lvl > 0 ? 'rgba(0,255,136,0.2)' : 'var(--border)'}`,
+                    }}
+                    title={b.label}
+                  >
+                    {b.icon} {lvl > 0 ? lvl : '—'}
+                  </span>
+                )
+              })}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(p.resources || {}).map(([res, amount]) =>
