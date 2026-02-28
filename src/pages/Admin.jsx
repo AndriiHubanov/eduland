@@ -125,13 +125,13 @@ function ApprovalsTab() {
       const map = {}
       tasks.forEach(t => { map[t.id] = t })
       setTaskMap(map)
-    })
+    }).catch(() => {}) // помилка не критична — taskMap просто буде порожнім
 
     // Підписка на pending здачі (реальний час)
-    const unsub = subscribePendingSubmissions((data) => {
-      setSubs(data)
-      setLoading(false)
-    })
+    const unsub = subscribePendingSubmissions(
+      (data) => { setSubs(data); setLoading(false) },
+      (err)  => { setError(err.message || 'Помилка Firebase'); setLoading(false) }
+    )
     return () => unsub()
   }, [])
 
@@ -271,20 +271,27 @@ function TasksTab({ type }) {
   )
 
   useEffect(() => {
-    getDisciplines().then(setDisciplines)
+    getDisciplines()
+      .then(setDisciplines)
+      .catch(() => {})
 
     // Підписка на всі активні завдання (один запит)
-    const unsub = subscribeAllActiveTasks((all) => {
-      const filtered = all.filter(t =>
-        type === 'test'
-          ? t.type === 'test'
-          : t.type === 'open' || !t.type
-      )
-      // Сортуємо за датою (нові спочатку)
-      filtered.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
-      setTasks(filtered)
-      setLoading(false)
-    })
+    const unsub = subscribeAllActiveTasks(
+      (all) => {
+        const filtered = all.filter(t =>
+          type === 'test'
+            ? t.type === 'test'
+            : t.type === 'open' || !t.type
+        )
+        filtered.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+        setTasks(filtered)
+        setLoading(false)
+      },
+      (err) => {
+        setFeedback({ type: 'error', text: err.message || 'Помилка Firebase' })
+        setLoading(false)
+      }
+    )
     return () => unsub()
   }, [type])
 
@@ -528,7 +535,9 @@ function StatsTab() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getAllPlayers().then(data => { setPlayers(data); setLoading(false) })
+    getAllPlayers()
+      .then(data => { setPlayers(data); setLoading(false) })
+      .catch(err => { console.error(err); setLoading(false) })
   }, [])
 
   if (loading) return <Spinner />
@@ -660,10 +669,9 @@ function PlayersTab() {
   const [search, setSearch]       = useState('')
 
   useEffect(() => {
-    getAllPlayers().then(data => {
-      setPlayers(data)
-      setLoading(false)
-    })
+    getAllPlayers()
+      .then(data => { setPlayers(data); setLoading(false) })
+      .catch(err => { console.error(err); setLoading(false) })
   }, [])
 
   if (loading) return <Spinner />
@@ -730,10 +738,9 @@ function DisciplinesTab() {
   ])
 
   useEffect(() => {
-    getDisciplines().then(data => {
-      setDisciplines(data)
-      setLoading(false)
-    })
+    getDisciplines()
+      .then(data => { setDisciplines(data); setLoading(false) })
+      .catch(err => { setFeedback({ type: 'error', text: err.message || 'Помилка Firebase' }); setLoading(false) })
   }, [])
 
   function updateResource(idx, field, value) {
@@ -866,6 +873,7 @@ function BuildingsTab() {
         setBuildingsList(builds)
         if (discs.length > 0 && !selDisc) setSelDisc(discs[0].id)
       })
+      .catch(err => { setFeedback({ type: 'error', text: err.message || 'Помилка Firebase' }) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -973,7 +981,9 @@ function MailTab() {
   const [feedback, setFeedback] = useState({ type: '', text: '' })
 
   useEffect(() => {
-    getAllPlayers().then(setPlayers)
+    getAllPlayers()
+      .then(setPlayers)
+      .catch(err => console.error(err))
   }, [])
 
   async function handleSend() {
@@ -1081,14 +1091,13 @@ function SurveysTab() {
   const GROUP_KEYS = Object.keys(GROUPS_CONFIG)
 
   useEffect(() => {
-    // Підписуємось на всі групи — показуємо всі опитування (без фільтра)
-    // Беремо першу групу як базу
-    const unsub = subscribeSurveys(GROUP_KEYS[0], (data) => {
-      setSurveys(data)
-      setLoading(false)
-    })
+    const unsub = subscribeSurveys(
+      GROUP_KEYS[0],
+      (data) => { setSurveys(data); setLoading(false) },
+      (err)  => { showMsg('error', err.message || 'Помилка Firebase'); setLoading(false) }
+    )
     return () => unsub()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function showMsg(type, text) {
     setFeedback({ type, text })

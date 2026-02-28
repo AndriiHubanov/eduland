@@ -11,7 +11,7 @@ import { db } from './config'
 // ─── Підписки ────────────────────────────────────────────────
 
 // Активні опитування для групи
-export function subscribeSurveys(group, callback) {
+export function subscribeSurveys(group, callback, onError) {
   const q = query(
     collection(db, 'surveys'),
     where('active', '==', true),
@@ -22,7 +22,7 @@ export function subscribeSurveys(group, callback) {
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
     callback(surveys)
-  })
+  }, onError)
 }
 
 // Відповіді гравця (для перевірки кулдауну)
