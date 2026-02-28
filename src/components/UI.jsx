@@ -61,13 +61,19 @@ export function ResourceBadge({ resource, amount, showName = false }) {
 }
 
 // Рядок всіх ресурсів гравця
-export function ResourceBar({ resources, className = '' }) {
-  const order = ['gold', 'wood', 'stone', 'crystals', 'bits', 'code']
+export function ResourceBar({ resources, diamonds, className = '' }) {
+  const order = ['gold', 'wood', 'stone', 'crystals', 'bits', 'code', 'bio', 'energy']
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>
-      {order.filter(r => resources[r] !== undefined).map(r => (
+      {order.filter(r => resources[r] !== undefined && resources[r] > 0).map(r => (
         <ResourceBadge key={r} resource={r} amount={resources[r]} />
       ))}
+      {diamonds > 0 && (
+        <span className="resource-badge" style={{ color: '#b9f2ff' }}>
+          <span>💠</span>
+          <span className="font-mono">{diamonds}</span>
+        </span>
+      )}
     </div>
   )
 }
