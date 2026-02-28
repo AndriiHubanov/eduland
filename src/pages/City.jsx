@@ -23,6 +23,7 @@ import {
   LoreBanner, ResourceBadge, EmptyState,
 } from '../components/UI'
 import BuildingCard    from '../components/BuildingCard'
+import CityGrid        from '../components/CityGrid'
 import MiningGrid      from '../components/MiningGrid'
 import CastlePanel     from '../components/CastlePanel'
 import UnitsPanel      from '../components/UnitsPanel'
@@ -41,7 +42,7 @@ const NAV_ITEMS = [
   { id: 'trade',  icon: '🔄', label: 'Торгівля' },
 ]
 
-const DEFAULT_OPEN = ['hero', 'production', 'buildings', 'labs', 'techtree', 'castle', 'army']
+const DEFAULT_OPEN = ['hero', 'production', 'labs', 'techtree', 'castle', 'army']
 function loadOpenSections() {
   try {
     return new Set(JSON.parse(localStorage.getItem('city_sections') || JSON.stringify(DEFAULT_OPEN)))
@@ -858,30 +859,20 @@ function CityTab({
         </Card>
       </CollapsibleSection>
 
-      {/* ─── БУДІВЛІ ─── */}
-      <CollapsibleSection id="buildings" title="БУДІВЛІ" open={openSections.has('buildings')} onToggle={toggleSection}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {buildings.map(building => {
-            const pb      = player.buildings[building.id] || { level: 0, workers: 0 }
-            const nextLvl = building.levels?.[pb.level]
-            const canUpgrade = nextLvl
-              ? Object.entries(nextLvl.cost).every(([res, cost]) => (player.resources[res] || 0) >= cost)
-              : false
-            return (
-              <BuildingCard
-                key={building.id}
-                building={building}
-                playerBuilding={pb}
-                workers={player.workers || { total: 5, placed: totalPlaced }}
-                onWorkerToggle={onWorkerToggle}
-                onUpgrade={onUpgrade}
-                canUpgrade={canUpgrade}
-                upgradeDisabled={!canUpgrade}
-              />
-            )
-          })}
+      {/* ─── ПОЛЕ МІСТА (візуальна сітка) ─── */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <div className="h-0.5 w-3 bg-[var(--accent)]" />
+          <h2 className="font-bebas text-base tracking-widest text-[#888]">ПОЛЕ МІСТА</h2>
+          <div className="flex-1 h-0.5 bg-[var(--border)]" />
         </div>
-      </CollapsibleSection>
+        <CityGrid
+          player={player}
+          buildings={buildings}
+          onWorkerToggle={onWorkerToggle}
+          onUpgrade={onUpgrade}
+        />
+      </div>
 
       {/* ─── ЛАБОРАТОРІЇ ─── */}
       <CollapsibleSection id="labs" title="🔭 ЛАБОРАТОРІЇ" open={openSections.has('labs')} onToggle={toggleSection}>
@@ -897,29 +888,6 @@ function CityTab({
         />
       </CollapsibleSection>
 
-      {/* ─── ПОЛЕ МІСТА ─── */}
-      {player.resourceMap && (
-        <CollapsibleSection id="grid" title="ПОЛЕ МІСТА" open={openSections.has('grid')} onToggle={toggleSection}>
-          <Card className="p-3">
-            <p className="text-xs text-[#555] mb-3 leading-relaxed">
-              Тисни на клітинку щоб розмістити будівлю або дослідити ділянку (💾 50 Бітів, ⏱ 6 год).
-            </p>
-            <MiningGrid
-              player={player}
-              buildings={buildings}
-              onStartResearch={onStartResearch}
-              onRevealCell={onRevealCell}
-              onBuildMine={onBuildMine}
-              onCollectMine={onCollectMine}
-              onUpgradeMine={onUpgradeMine}
-              onPlaceBuilding={onPlaceBuilding}
-              onRemoveBuilding={onRemoveBuilding}
-              onWorkerToggle={onWorkerToggle}
-              onUpgrade={onUpgrade}
-            />
-          </Card>
-        </CollapsibleSection>
-      )}
 
       {/* ─── ЗАМОК ─── */}
       <CollapsibleSection id="castle" title="ЗАМОК" open={openSections.has('castle')} onToggle={toggleSection}>
