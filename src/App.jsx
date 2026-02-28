@@ -13,7 +13,8 @@ import WorldMap  from './pages/WorldMap'
 import Tasks     from './pages/Tasks'
 import Inbox     from './pages/Inbox'
 import Trade     from './pages/Trade'
-import Admin     from './pages/Admin'
+import Admin      from './pages/Admin'
+import SurveyPage from './pages/SurveyPage'
 
 // Захищений маршрут — перевіряє авторизацію
 function PrivateRoute({ children }) {
@@ -59,7 +60,8 @@ export default function App() {
         <Route path="/map"   element={<PrivateRoute><WorldMap /></PrivateRoute>} />
         <Route path="/tasks" element={<PrivateRoute><Tasks /></PrivateRoute>} />
         <Route path="/inbox" element={<PrivateRoute><Inbox /></PrivateRoute>} />
-        <Route path="/trade" element={<PrivateRoute><Trade /></PrivateRoute>} />
+        <Route path="/trade"   element={<PrivateRoute><Trade /></PrivateRoute>} />
+        <Route path="/surveys" element={<PrivateRoute><SurveyPage /></PrivateRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -95,6 +95,19 @@ export default function Tasks() {
       </header>
 
       <main className="flex-1 p-4 pb-20 max-w-2xl mx-auto w-full">
+        {/* Посилання на опитування */}
+        <button
+          onClick={() => navigate('/surveys')}
+          className="w-full mb-4 flex items-center gap-3 p-3 rounded-lg border border-[rgba(0,255,136,0.25)] bg-[rgba(0,255,136,0.05)] hover:bg-[rgba(0,255,136,0.1)] transition-colors text-left"
+        >
+          <span className="text-2xl">🧠</span>
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-[var(--neon)]">Психологічні опитування</div>
+            <div className="text-xs text-[#555]">Проходь та отримуй ресурси</div>
+          </div>
+          <span className="text-[#555]">→</span>
+        </button>
+
         {sorted.length === 0 ? (
           <EmptyState icon="⚔️" text="Немає активних завдань. Зачекайте наступної пари." />
         ) : (

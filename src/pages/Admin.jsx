@@ -12,6 +12,10 @@ import {
   ErrorMsg, SuccessMsg, ResourceBadge
 } from '../components/UI'
 import { GROUPS as GROUPS_CONFIG, getHeroLevel, RESOURCE_ICONS } from '../store/gameStore'
+import {
+  createSurvey, deactivateSurvey, getSurveyResponses,
+  subscribeSurveys,
+} from '../firebase/surveyService'
 
 const ADMIN_PASSWORD = 'nova2047'
 
@@ -62,6 +66,7 @@ export default function Admin() {
     { id: 'approvals',   label: '✓ Підтвердження' },
     { id: 'tasks',       label: 'Завдання' },
     { id: 'tests',       label: 'Тести' },
+    { id: 'surveys',     label: '🧠 Опитування' },
     { id: 'players',     label: 'Гравці' },
     { id: 'stats',       label: '📊 Статистика' },
     { id: 'disciplines', label: 'Дисципліни' },
@@ -95,6 +100,7 @@ export default function Admin() {
         {activeTab === 'approvals'   && <ApprovalsTab />}
         {activeTab === 'tasks'       && <TasksTab type="open" />}
         {activeTab === 'tests'       && <TasksTab type="test" />}
+        {activeTab === 'surveys'     && <SurveysTab />}
         {activeTab === 'players'     && <PlayersTab />}
         {activeTab === 'stats'       && <StatsTab />}
         {activeTab === 'disciplines' && <DisciplinesTab />}
@@ -1049,6 +1055,310 @@ function MailTab() {
           </Button>
         </div>
       </Card>
+    </div>
+  )
+}
+
+// ─── ОПИТУВАННЯ ───────────────────────────────────────────────
+function SurveysTab() {
+  const [surveys, setSurveys]   = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [selected, setSelected] = useState(null) // surveyId для перегляду відповідей
+  const [responses, setResponses] = useState([])
+  const [respLoading, setRespLoading] = useState(false)
+  const [feedback, setFeedback] = useState({ type: '', text: '' })
+
+  // Форма нового опитування
+  const [form, setForm] = useState({
+    title: '', description: '',
+    groups: [],
+    cooldownDays: '',
+    reward: { gold: '', bits: '' },
+    questions: [{ id: 'q1', text: '', type: 'scale', options: [] }],
+  })
+
+  const GROUP_KEYS = Object.keys(GROUPS_CONFIG)
+
+  useEffect(() => {
+    // Підписуємось на всі групи — показуємо всі опитування (без фільтра)
+    // Беремо першу групу як базу
+    const unsub = subscribeSurveys(GROUP_KEYS[0], (data) => {
+      setSurveys(data)
+      setLoading(false)
+    })
+    return () => unsub()
+  }, [])
+
+  function showMsg(type, text) {
+    setFeedback({ type, text })
+    setTimeout(() => setFeedback({ type: '', text: '' }), 4000)
+  }
+
+  async function handleCreate() {
+    const questions = form.questions.filter(q => q.text.trim())
+    if (!form.title.trim() || questions.length === 0) {
+      showMsg('error', 'Вкажи назву і хоча б одне питання')
+      return
+    }
+
+    const reward = {}
+    for (const [res, val] of Object.entries(form.reward)) {
+      const n = parseInt(val)
+      if (n > 0) reward[res] = n
+    }
+
+    try {
+      await createSurvey({
+        title: form.title.trim(),
+        description: form.description.trim(),
+        questions,
+        reward,
+        groups: form.groups.length > 0 ? form.groups : GROUP_KEYS,
+        cooldownDays: parseInt(form.cooldownDays) || null,
+      })
+      showMsg('success', 'Опитування створено!')
+      setShowForm(false)
+      setForm({
+        title: '', description: '', groups: [], cooldownDays: '',
+        reward: { gold: '', bits: '' },
+        questions: [{ id: 'q1', text: '', type: 'scale', options: [] }],
+      })
+    } catch (err) {
+      showMsg('error', err.message)
+    }
+  }
+
+  async function handleDeactivate(id) {
+    try {
+      await deactivateSurvey(id)
+      showMsg('success', 'Опитування деактивовано')
+    } catch (err) {
+      showMsg('error', err.message)
+    }
+  }
+
+  async function loadResponses(surveyId) {
+    setSelected(surveyId)
+    setRespLoading(true)
+    try {
+      const data = await getSurveyResponses(surveyId)
+      setResponses(data)
+    } finally {
+      setRespLoading(false)
+    }
+  }
+
+  function addQuestion() {
+    setForm(f => ({
+      ...f,
+      questions: [
+        ...f.questions,
+        { id: `q${f.questions.length + 1}`, text: '', type: 'scale', options: [] },
+      ],
+    }))
+  }
+
+  function updateQuestion(idx, field, val) {
+    setForm(f => {
+      const qs = [...f.questions]
+      qs[idx] = { ...qs[idx], [field]: val }
+      return { ...f, questions: qs }
+    })
+  }
+
+  function removeQuestion(idx) {
+    setForm(f => ({ ...f, questions: f.questions.filter((_, i) => i !== idx) }))
+  }
+
+  if (loading) return <Spinner text="Завантаження..." />
+
+  return (
+    <div className="flex flex-col gap-4">
+      {feedback.text && (
+        feedback.type === 'error'
+          ? <ErrorMsg text={feedback.text} />
+          : <SuccessMsg text={feedback.text} />
+      )}
+
+      <Button variant="neon" className="w-full" onClick={() => setShowForm(s => !s)}>
+        {showForm ? '✕ Закрити форму' : '+ НОВЕ ОПИТУВАННЯ'}
+      </Button>
+
+      {/* Форма */}
+      {showForm && (
+        <Card>
+          <h3 className="font-bebas text-lg text-white mb-3 tracking-wider">НОВЕ ОПИТУВАННЯ</h3>
+          <div className="flex flex-col gap-3">
+            <Input
+              label="Назва"
+              value={form.title}
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="Наприклад: Самооцінка тижня"
+            />
+            <Input
+              label="Опис (необов'язково)"
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Короткий опис"
+            />
+
+            {/* Нагорода */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#888] mb-1.5">Нагорода</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  label="🪙 Золото"
+                  type="number"
+                  value={form.reward.gold}
+                  onChange={e => setForm(f => ({ ...f, reward: { ...f.reward, gold: e.target.value } }))}
+                  placeholder="0"
+                />
+                <Input
+                  label="💾 Біти"
+                  type="number"
+                  value={form.reward.bits}
+                  onChange={e => setForm(f => ({ ...f, reward: { ...f.reward, bits: e.target.value } }))}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            {/* Кулдаун */}
+            <Input
+              label="Кулдаун (днів, 0 = одноразово)"
+              type="number"
+              value={form.cooldownDays}
+              onChange={e => setForm(f => ({ ...f, cooldownDays: e.target.value }))}
+              placeholder="7"
+            />
+
+            {/* Питання */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#888] mb-2">Питання</p>
+              <div className="flex flex-col gap-3">
+                {form.questions.map((q, i) => (
+                  <div key={i} className="bg-[var(--bg3)] rounded-lg p-3 flex flex-col gap-2">
+                    <div className="flex gap-2 items-start">
+                      <span className="text-xs text-[var(--accent)] font-mono mt-2">{i + 1}.</span>
+                      <textarea
+                        value={q.text}
+                        onChange={e => updateQuestion(i, 'text', e.target.value)}
+                        placeholder="Текст питання"
+                        rows={2}
+                        className="flex-1 input resize-none text-sm"
+                      />
+                      {form.questions.length > 1 && (
+                        <button
+                          onClick={() => removeQuestion(i)}
+                          className="text-[#555] hover:text-[var(--accent)] text-xs mt-2"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {['scale', 'choice', 'text'].map(t => (
+                        <button
+                          key={t}
+                          onClick={() => updateQuestion(i, 'type', t)}
+                          className={`text-xs px-2 py-1 rounded border transition-all ${
+                            q.type === t
+                              ? 'border-[var(--neon)] text-[var(--neon)] bg-[rgba(0,255,136,0.08)]'
+                              : 'border-[var(--border)] text-[#555] hover:border-[#444]'
+                          }`}
+                        >
+                          {t === 'scale' ? '1–5' : t === 'choice' ? 'Вибір' : 'Текст'}
+                        </button>
+                      ))}
+                    </div>
+                    {q.type === 'choice' && (
+                      <textarea
+                        value={(q.options || []).join('\n')}
+                        onChange={e => updateQuestion(i, 'options', e.target.value.split('\n').filter(Boolean))}
+                        placeholder="Варіанти відповідей (кожен з нового рядка)"
+                        rows={3}
+                        className="input resize-none text-sm"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Button variant="ghost" className="w-full mt-2 text-xs" onClick={addQuestion}>
+                + Додати питання
+              </Button>
+            </div>
+
+            <Button variant="neon" className="w-full" onClick={handleCreate}>
+              СТВОРИТИ ОПИТУВАННЯ
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Список опитувань */}
+      {surveys.length === 0 ? (
+        <EmptyState icon="🧠" text="Немає активних опитувань" />
+      ) : (
+        surveys.map(survey => (
+          <Card key={survey.id}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <div className="font-semibold text-white text-sm">{survey.title}</div>
+                <div className="text-xs text-[#555] mt-0.5">
+                  {survey.questions?.length || 0} питань
+                  {survey.cooldownDays ? ` · кулдаун ${survey.cooldownDays} дн.` : ' · одноразово'}
+                </div>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <Button
+                  variant="ghost"
+                  className="text-xs px-2 py-1"
+                  onClick={() => selected === survey.id ? setSelected(null) : loadResponses(survey.id)}
+                >
+                  {selected === survey.id ? 'Сховати' : '👁 Відповіді'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="text-xs px-2 py-1 text-[var(--accent)] hover:text-[var(--accent)]"
+                  onClick={() => handleDeactivate(survey.id)}
+                >
+                  Закрити
+                </Button>
+              </div>
+            </div>
+
+            {/* Відповіді */}
+            {selected === survey.id && (
+              <div className="mt-2 border-t border-[var(--border)] pt-2">
+                {respLoading ? (
+                  <Spinner text="Завантаження відповідей..." />
+                ) : responses.length === 0 ? (
+                  <p className="text-xs text-[#555] py-2 text-center">Відповідей ще немає</p>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                    {responses.map(r => (
+                      <div key={r.id} className="bg-[var(--bg3)] rounded p-2">
+                        <div className="text-xs font-semibold text-white">{r.playerName}</div>
+                        <div className="text-[10px] text-[#555] mb-1">{r.group}</div>
+                        {Object.entries(r.answers || {}).map(([qId, ans]) => {
+                          const q = survey.questions?.find(q => q.id === qId)
+                          return (
+                            <div key={qId} className="text-xs">
+                              <span className="text-[#666]">{q?.text || qId}: </span>
+                              <span className="text-white">{String(ans)}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        ))
+      )}
     </div>
   )
 }
