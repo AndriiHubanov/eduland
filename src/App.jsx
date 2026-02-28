@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import useGameStore from './store/gameStore'
 import { initializeFirebaseData, getPlayer, subscribeUnreadCount } from './firebase/service'
+import { initGroupFields } from './firebase/fieldService'
 
 // Сторінки
 import Landing   from './pages/Landing'
@@ -31,11 +32,15 @@ export default function App() {
     initializeFirebaseData()
   }, [])
 
-  // Відновлення сесії з localStorage
+  // Відновлення сесії + ініціалізація полів групи
   useEffect(() => {
     if (playerId) {
       getPlayer(playerId).then(player => {
-        if (player) setPlayer(player)
+        if (player) {
+          setPlayer(player)
+          // Ініціалізуємо 31 поле якщо ще не існують для цієї групи
+          if (player.group) initGroupFields(player.group).catch(console.error)
+        }
       }).catch(console.error)
     }
   }, [playerId])
