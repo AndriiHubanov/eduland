@@ -7,6 +7,7 @@ import {
   runTransaction, serverTimestamp, writeBatch,
 } from 'firebase/firestore'
 import { db } from './config'
+import { addResearchPoints } from './scienceService'
 
 // ─── Константи ───────────────────────────────────────────────
 
@@ -74,6 +75,36 @@ export const DEFAULT_DAILY_MISSIONS = [
     reward: { gold: 40 },
     xpReward: 5,
   },
+  {
+    id: 'daily_field_expedition',
+    title: 'Першовідкривач',
+    description: 'Відправ команду на будь-яке поле',
+    type: 'daily',
+    objective: { action: 'start_expedition', count: 1 },
+    reward: { energy: 30, gold: 50 },
+    xpReward: 10,
+    rpReward: 2,
+  },
+  {
+    id: 'daily_extract_field',
+    title: 'Видобувач',
+    description: 'Видобудь ресурси з ресурсного поля',
+    type: 'daily',
+    objective: { action: 'claim_extract', count: 1 },
+    reward: { bio: 30, energy: 20 },
+    xpReward: 12,
+    rpReward: 3,
+  },
+  {
+    id: 'daily_field_ruin',
+    title: 'Штурмовик',
+    description: 'Штурмуй руїну через поле',
+    type: 'daily',
+    objective: { action: 'claim_attack', count: 1 },
+    reward: { gold: 120, code: 20 },
+    xpReward: 15,
+    rpReward: 3,
+  },
 ]
 
 export const DEFAULT_WEEKLY_MISSIONS = [
@@ -132,6 +163,26 @@ export const DEFAULT_WEEKLY_MISSIONS = [
     objective: { action: 'recruit_unit', count: 3 },
     reward: { gold: 250, bits: 50 },
     xpReward: 25,
+  },
+  {
+    id: 'weekly_field_expeditions',
+    title: 'Дослідник полів',
+    description: 'Відправ 5 місій на поля',
+    type: 'weekly',
+    objective: { action: 'start_expedition', count: 5 },
+    reward: { gold: 400, energy: 80, bits: 60 },
+    xpReward: 50,
+    rpReward: 8,
+  },
+  {
+    id: 'weekly_field_extractions',
+    title: 'Промисловець',
+    description: 'Видобудь ресурси з 3 різних полів',
+    type: 'weekly',
+    objective: { action: 'claim_extract', count: 3 },
+    reward: { gold: 350, bio: 60, crystals: 20 },
+    xpReward: 40,
+    rpReward: 6,
   },
 ]
 
@@ -406,6 +457,7 @@ export async function initPlayerMissions(playerId) {
       reward: mission.reward,
       xpReward: mission.xpReward || 0,
       diamondReward: mission.diamondReward || 0,
+      rpReward: mission.rpReward || 0,
       progress: 0,
       target: mission.objective.count,
       status: 'active',    // active | completed | claimed
@@ -430,6 +482,7 @@ export async function initPlayerMissions(playerId) {
       reward: mission.reward,
       xpReward: mission.xpReward || 0,
       diamondReward: mission.diamondReward || 0,
+      rpReward: mission.rpReward || 0,
       progress: 0,
       target: mission.objective.count,
       status: 'active',
@@ -574,6 +627,11 @@ export async function claimMissionReward(playerId, missionDocId) {
     tx.update(playerRef, updates)
     tx.update(missionRef, { status: 'claimed', claimedAt: new Date() })
 
+    // RP (Research Points) — окремо після транзакції (updateDoc)
+    if (mission.rpReward) {
+      await addResearchPoints(playerId, mission.rpReward)
+    }
+
     // Якщо сюжетна місія — розблокувати наступну
     if (mission.type === 'story' && mission.nextMission) {
       const nextMission = DEFAULT_STORY_MISSIONS.find(m => m.id === mission.nextMission)
@@ -638,6 +696,7 @@ export async function rotateDailyMissions(playerId) {
       reward: mission.reward,
       xpReward: mission.xpReward || 0,
       diamondReward: mission.diamondReward || 0,
+      rpReward: mission.rpReward || 0,
       progress: 0,
       target: mission.objective.count,
       status: 'active',

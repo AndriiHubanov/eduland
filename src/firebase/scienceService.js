@@ -254,6 +254,186 @@ export const SCIENCES = {
     researchTime: 7200,
     effect: { reactorBoost: 0.4 },
   },
+
+  // ══════════════════════════════════════════════════════════
+  // ПРИРОДНИЧІ НАУКИ — 4 дисципліни × 3 рівні (Phase 11)
+  // ══════════════════════════════════════════════════════════
+
+  // ─── Біологія 🧬 ─────────────────────────────────────────
+  nat_bio_basics: {
+    id: 'nat_bio_basics',
+    name: 'Основи біології',
+    description: 'Виробництво bio +25%. Відкриває гілку біологічних досліджень.',
+    icon: '🧬',
+    branch: 'biology',
+    discipline: 'biology',
+    level: 1,
+    requires: [],
+    cost: { bio: 30, energy: 10 },
+    researchTime: 3600,
+    rpCost: 2,
+    effect: { bioProduction: 0.25 },
+  },
+  nat_bio_genetics: {
+    id: 'nat_bio_genetics',
+    name: 'Генетика',
+    description: 'Видобуток bio-ресурсів з полів +20%. Медик лікує +30% більше.',
+    icon: '🔬',
+    branch: 'biology',
+    discipline: 'biology',
+    level: 2,
+    requires: ['nat_bio_basics'],
+    cost: { bio: 80, energy: 30 },
+    researchTime: 9000,
+    rpCost: 4,
+    effect: { fieldBioYield: 0.20, medicHealBoost: 0.30 },
+  },
+  nat_bio_weapon: {
+    id: 'nat_bio_weapon',
+    name: 'Біозброя',
+    description: 'Юніти +20% ATK під час штурму руїн через поля.',
+    icon: '☣️',
+    branch: 'biology',
+    discipline: 'biology',
+    level: 3,
+    requires: ['nat_bio_genetics'],
+    cost: { bio: 150, energy: 60, crystals: 20 },
+    researchTime: 18000,
+    rpCost: 8,
+    effect: { fieldAttackBonus: 0.20 },
+  },
+
+  // ─── Хімія ⚗️ ────────────────────────────────────────────
+  nat_chem_reagents: {
+    id: 'nat_chem_reagents',
+    name: 'Реактиви',
+    description: 'Час усіх експедицій -10%. Відкриває хімічну гілку.',
+    icon: '⚗️',
+    branch: 'chemistry',
+    discipline: 'chemistry',
+    level: 1,
+    requires: [],
+    cost: { bio: 40, code: 20 },
+    researchTime: 3600,
+    rpCost: 2,
+    effect: { expeditionTimeBonus: 0.10 },
+  },
+  nat_chem_explosives: {
+    id: 'nat_chem_explosives',
+    name: 'Вибухівка',
+    description: '+25% пошкоджень HP руїн під час штурму через поля.',
+    icon: '💥',
+    branch: 'chemistry',
+    discipline: 'chemistry',
+    level: 2,
+    requires: ['nat_chem_reagents'],
+    cost: { bio: 80, code: 50, energy: 20 },
+    researchTime: 9000,
+    rpCost: 4,
+    effect: { ruinDamageBonus: 0.25 },
+  },
+  nat_chem_alchemy: {
+    id: 'nat_chem_alchemy',
+    name: 'Алхімія',
+    description: 'Бонус Екстракційної станції +15% додатково. Відкриває конвертацію ресурсів.',
+    icon: '🔮',
+    branch: 'chemistry',
+    discipline: 'chemistry',
+    level: 3,
+    requires: ['nat_chem_explosives'],
+    cost: { bio: 150, code: 100, energy: 50 },
+    researchTime: 18000,
+    rpCost: 8,
+    effect: { extractionBonusExtra: 15, resourceConversion: true },
+  },
+
+  // ─── Фізика ⚡ ────────────────────────────────────────────
+  nat_phys_thermo: {
+    id: 'nat_phys_thermo',
+    name: 'Термодинаміка',
+    description: 'Виробництво energy +30%. Відкриває фізичну гілку.',
+    icon: '🌡️',
+    branch: 'physics',
+    discipline: 'physics',
+    level: 1,
+    requires: [],
+    cost: { energy: 30, crystals: 10 },
+    researchTime: 3600,
+    rpCost: 2,
+    effect: { energyProduction: 0.30 },
+  },
+  nat_phys_mechanics: {
+    id: 'nat_phys_mechanics',
+    name: 'Механіка',
+    description: 'Вартість апгрейду будівель -15%. Час будівництва -10%.',
+    icon: '⚙️',
+    branch: 'physics',
+    discipline: 'physics',
+    level: 2,
+    requires: ['nat_phys_thermo'],
+    cost: { energy: 80, crystals: 30 },
+    researchTime: 9000,
+    rpCost: 4,
+    effect: { buildCostReduction: 0.15, buildTimeReduction: 0.10 },
+  },
+  nat_phys_quantum: {
+    id: 'nat_phys_quantum',
+    name: 'Квантова фізика',
+    description: 'Час розвідки (scout) скорочується на 50%. Реактор +20% виробництво.',
+    icon: '⚛️',
+    branch: 'physics',
+    discipline: 'physics',
+    level: 3,
+    requires: ['nat_phys_mechanics'],
+    cost: { energy: 150, crystals: 60, bio: 30 },
+    researchTime: 18000,
+    rpCost: 8,
+    effect: { scoutTimeReduction: 0.50, reactorBoost: 0.20 },
+  },
+
+  // ─── Географія 🗺️ ────────────────────────────────────────
+  nat_geo_cartography: {
+    id: 'nat_geo_cartography',
+    name: 'Картографія',
+    description: 'На WorldMap видно тип і тир поля без розвідки. Відкриває географічну гілку.',
+    icon: '🗺️',
+    branch: 'geography',
+    discipline: 'geography',
+    level: 1,
+    requires: [],
+    cost: { bio: 30, gold: 300 },
+    researchTime: 3600,
+    rpCost: 2,
+    effect: { fieldsAlwaysVisible: true },
+  },
+  nat_geo_geology: {
+    id: 'nat_geo_geology',
+    name: 'Геологія',
+    description: 'Видобуток ресурсів з ресурсних полів +25%.',
+    icon: '🪨',
+    branch: 'geography',
+    discipline: 'geography',
+    level: 2,
+    requires: ['nat_geo_cartography'],
+    cost: { bio: 80, gold: 700, energy: 20 },
+    researchTime: 9000,
+    rpCost: 4,
+    effect: { fieldResourceYield: 0.25 },
+  },
+  nat_geo_seismology: {
+    id: 'nat_geo_seismology',
+    name: 'Сейсмологія',
+    description: 'Сигнальна вежа отримує +1 форс-рефреш на добу. Руїни HP видно без розвідки.',
+    icon: '📡',
+    branch: 'geography',
+    discipline: 'geography',
+    level: 3,
+    requires: ['nat_geo_geology'],
+    cost: { bio: 150, gold: 1500, energy: 50 },
+    researchTime: 18000,
+    rpCost: 8,
+    effect: { signalTowerExtraRefresh: 1, ruinHPVisible: true },
+  },
 }
 
 export const SCIENCE_BRANCHES = {
@@ -261,6 +441,75 @@ export const SCIENCE_BRANCHES = {
   military:        { name: 'Військо',           icon: '⚔️', color: '#ff4444' },
   informatics:     { name: 'Інформатика',       icon: '💻', color: '#00aaff' },
   natural_science: { name: 'Природничі науки',  icon: '🔬', color: '#00ff88' },
+  // Phase 11 — 4 природничі дисципліни
+  biology:         { name: 'Біологія',   icon: '🧬', color: '#00ff88', disciplineOrder: 0 },
+  chemistry:       { name: 'Хімія',      icon: '⚗️', color: '#88aaff', disciplineOrder: 1 },
+  physics:         { name: 'Фізика',     icon: '⚡', color: '#ffaa00', disciplineOrder: 2 },
+  geography:       { name: 'Географія',  icon: '🗺️', color: '#aaffaa', disciplineOrder: 3 },
+}
+
+// ─── Природничі дисципліни (для Tech Tree UI) ─────────────────
+export const NATURAL_DISCIPLINES = ['biology', 'chemistry', 'physics', 'geography']
+
+// Всі вузли tech tree для конкретної дисципліни (впорядковані по рівню)
+export function getDisciplineNodes(discipline) {
+  return Object.values(SCIENCES)
+    .filter(s => s.discipline === discipline)
+    .sort((a, b) => a.level - b.level)
+}
+
+// ─── Research Points (RP) ─────────────────────────────────────
+// RP зберігаються в player.researchPoints (число)
+// Заробляються за: виконання природничих завдань, місії полів, weekly missions
+// Витрачаються замість часу: 1 RP = миттєвий unlock вузла (по rpCost)
+
+export async function unlockScienceWithRP(playerId, scienceId) {
+  const science = SCIENCES[scienceId]
+  if (!science) throw new Error('Невідома наука')
+  if (!science.rpCost) throw new Error('Цей вузол не можна відкрити за RP')
+
+  await runTransaction(db, async (tx) => {
+    const playerRef = doc(db, 'players', playerId)
+    const snap = await tx.get(playerRef)
+    if (!snap.exists()) throw new Error('Гравець не знайдений')
+
+    const player = snap.data()
+
+    // Перевірка prerequisites
+    const ps = player.sciences || {}
+    for (const req of science.requires) {
+      if (ps[req]?.status !== 'completed') {
+        throw new Error(`Спочатку відкрий: ${SCIENCES[req]?.name || req}`)
+      }
+    }
+
+    if (ps[scienceId]?.status === 'completed') throw new Error('Вже досліджено')
+
+    const rp = player.researchPoints || 0
+    if (rp < science.rpCost) throw new Error(`Потрібно ${science.rpCost} RP (є ${rp})`)
+
+    tx.update(playerRef, {
+      researchPoints: rp - science.rpCost,
+      [`sciences.${scienceId}`]: {
+        status: 'completed',
+        completedAt: new Date(),
+        startedAt: new Date(),
+        endsAt: null,
+        unlockedByRP: true,
+      },
+      lastActive: serverTimestamp(),
+    })
+  })
+}
+
+// Нарахувати Research Points гравцю
+export async function addResearchPoints(playerId, amount) {
+  if (amount <= 0) return
+  const playerRef = doc(db, 'players', playerId)
+  const snap = await getDoc(playerRef)
+  if (!snap.exists()) return
+  const current = snap.data().researchPoints || 0
+  await updateDoc(playerRef, { researchPoints: current + amount })
 }
 
 // ─── Нові поля в /players/{id} ───────────────────────────────
