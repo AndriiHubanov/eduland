@@ -6,7 +6,45 @@ import useGameStore, { HERO_CLASSES, getHeroLevel } from '../store/gameStore'
 import { subscribeGroupPlayers } from '../firebase/service'
 import { Spinner, Button, BottomNav } from '../components/UI'
 import { RUIN_TEMPLATES, RUINS, attackRuin } from '../firebase/ruinService'
-import { UNITS } from '../firebase/unitService'
+import { UNITS, getUnitStats, UNIT_LEVEL_MULTIPLIER } from '../firebase/unitService'
+
+// ─── Розрахунок шансу перемоги (0..100) ────────────────────
+function calcWinChance(player, ruinConfig) {
+  if (!player || !ruinConfig) return null
+  const formation = player.army?.formation || []
+  if (formation.length === 0) return null
+
+  // Бойовий рейтинг = сума (ATK * count + DEF * count + HP * count * 0.1)
+  function armyRating(armyData, heroClass, isRuin = false) {
+    let total = 0
+    for (const slot of armyData) {
+      const unit = UNITS[slot.unitId]
+      if (!unit) continue
+      const stats = getUnitStats(slot.unitId, slot.level || 1, heroClass)
+      if (!stats) continue
+      const siegeMult = isRuin && slot.unitId === 'siege_mech' ? 1.5 : 1
+      total += (stats.atk * siegeMult + stats.def + stats.hp * 0.1) * (slot.count || 1)
+    }
+    return total
+  }
+
+  const attackerArmy = formation.map(unitId => ({
+    unitId,
+    count: player.units?.[unitId]?.count || 0,
+    level: player.units?.[unitId]?.level || 1,
+  })).filter(u => u.count > 0)
+
+  const atkRating = armyRating(attackerArmy, player.heroClass, true)
+  const defRating = armyRating(ruinConfig.enemyArmy, null)
+
+  if (atkRating === 0) return 0
+  if (defRating === 0) return 100
+
+  // Шанс: логістична крива від співвідношення рейтингів
+  const ratio = atkRating / defRating
+  const chance = Math.round(100 / (1 + Math.exp(-2.5 * (ratio - 1))))
+  return Math.max(5, Math.min(95, chance))
+}
 import BattleScreen from '../components/BattleScreen'
 
 const NAV_ITEMS = [
@@ -200,6 +238,7 @@ export default function WorldMap() {
           ruin={selectedRuin}
           cooldownUntil={getRuinCooldown(selectedRuin.id)}
           hasArmy={(player?.army?.formation?.length || 0) > 0}
+          winChance={calcWinChance(player, RUINS[`tier${selectedRuin.tier}`])}
           attacking={attacking}
           onClose={() => setSelectedRuin(null)}
           onAttack={() => handleAttackRuin(selectedRuin)}
@@ -304,7 +343,7 @@ function MapCell({ cellPlayer, cellRuin, isOwn, heroClass, cellSize, onClick }) 
 }
 
 // ─── Панель руїни (знизу) ─────────────────────────────────────
-function RuinPanel({ ruin, cooldownUntil, hasArmy, attacking, onClose, onAttack }) {
+function RuinPanel({ ruin, cooldownUntil, hasArmy, winChance, attacking, onClose, onAttack }) {
   const ruinConfig = RUINS[`tier${ruin.tier}`]
   const tierColor  = ruinConfig?.color || '#888'
 
@@ -354,6 +393,30 @@ function RuinPanel({ ruin, cooldownUntil, hasArmy, attacking, onClose, onAttack 
               })}
             </div>
           </div>
+
+          {/* Шанс перемоги */}
+          {hasArmy && winChance !== null && !cooldownUntil && (
+            <div className="px-3 pb-2">
+              <div className="flex items-center justify-between text-xs font-mono mb-1">
+                <span className="text-[#555]">Шанс перемоги</span>
+                <span style={{ color: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)' }}>
+                  {winChance}%
+                </span>
+              </div>
+              <div className="h-2 bg-[var(--bg)] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${winChance}%`,
+                    background: winChance >= 65 ? 'var(--neon)' : winChance >= 40 ? 'var(--gold)' : 'var(--accent)',
+                  }}
+                />
+              </div>
+              <div className="text-[10px] text-[#444] mt-1 text-center">
+                {winChance >= 75 ? 'Висока перевага' : winChance >= 50 ? 'Рівний бій' : winChance >= 30 ? 'Ризиковано' : 'Дуже небезпечно'}
+              </div>
+            </div>
+          )}
 
           {/* Кнопка атаки */}
           <div className="p-3 pt-1">

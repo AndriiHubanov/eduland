@@ -11,12 +11,22 @@ import {
 import { upgradeCastle } from '../firebase/castleService'
 import { recruitUnit, upgradeUnit, setFormation } from '../firebase/unitService'
 import {
-  ResourceBar, XPBar, Spinner, ErrorMsg, SuccessMsg, Button, Card, BottomNav
+  subscribePlayerMissions, initPlayerMissions, updateMissionProgress, claimMissionReward,
+} from '../firebase/missionService'
+import {
+  ResourceBar, XPBar, Spinner, ErrorMsg, SuccessMsg, Button, Card, BottomNav,
+  LoreBanner, ResourceBadge, EmptyState,
 } from '../components/UI'
-import BuildingCard from '../components/BuildingCard'
-import MiningGrid   from '../components/MiningGrid'
-import CastlePanel  from '../components/CastlePanel'
-import UnitsPanel   from '../components/UnitsPanel'
+import BuildingCard    from '../components/BuildingCard'
+import MiningGrid      from '../components/MiningGrid'
+import CastlePanel     from '../components/CastlePanel'
+import UnitsPanel      from '../components/UnitsPanel'
+import MissionsPanel   from '../components/MissionsPanel'
+import CompletionCard  from '../components/CompletionCard'
+import {
+  subscribeTasks, subscribePlayerSubmissions, submitOpenTask, submitTest,
+  subscribeMessages, markMessageRead, markAllMessagesRead,
+} from '../firebase/service'
 
 const NAV_ITEMS = [
   { id: 'city',   icon: '🏙️', label: 'Місто'   },
@@ -26,6 +36,18 @@ const NAV_ITEMS = [
   { id: 'trade',  icon: '🔄', label: 'Торгівля' },
 ]
 
+const DEFAULT_OPEN = ['hero', 'production', 'buildings', 'castle', 'army']
+function loadOpenSections() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('city_sections') || JSON.stringify(DEFAULT_OPEN)))
+  } catch {
+    return new Set(DEFAULT_OPEN)
+  }
+}
+function saveOpenSections(set) {
+  localStorage.setItem('city_sections', JSON.stringify([...set]))
+}
+
 export default function City() {
   const navigate = useNavigate()
   const { player, playerId, setPlayer, unreadMessages, logout } = useGameStore()
@@ -34,7 +56,23 @@ export default function City() {
   const [loading, setLoading]       = useState(true)
   const [feedback, setFeedback]     = useState({ type: '', text: '' })
   const [showLogout, setShowLogout] = useState(false)
-  const [levelUp, setLevelUp]       = useState(null) // { level } або null
+  const [levelUp, setLevelUp]       = useState(null)
+  const [missions, setMissions]     = useState([])
+  const [showMissions, setShowMissions] = useState(false)
+
+  // ─── Таби та collapsible ────────────────────────────────────
+  const [activeTab, setActiveTab]     = useState('city')
+  const [openSections, setOpenSections] = useState(loadOpenSections)
+
+  // ─── Tasks стейт ────────────────────────────────────────────
+  const [tasks, setTasks]             = useState([])
+  const [submissions, setSubmissions] = useState({})
+  const [taskFilter, setTaskFilter]   = useState('all')
+  const [activeTask, setActiveTask]   = useState(null)
+  const [taskCompletion, setTaskCompletion] = useState(null)
+
+  // ─── Inbox стейт ────────────────────────────────────────────
+  const [messages, setMessages] = useState([])
 
   // Прапорець — виробництво нараховується тільки один раз за сесію
   const hasAccrued   = useRef(false)
@@ -60,6 +98,33 @@ export default function City() {
       // Ініціалізуємо resourceMap для існуючих гравців (один раз)
       if (!data.resourceMap) ensureResourceMap(data.id)
     })
+    return () => unsub()
+  }, [playerId])
+
+  // ─── 2b. Підписка на місії + ініціалізація ─────────────────
+  useEffect(() => {
+    if (!playerId) return
+    const unsub = subscribePlayerMissions(playerId, (data) => {
+      setMissions(data)
+      // Якщо місій немає — ініціалізуємо (новий гравець)
+      if (data.length === 0) {
+        initPlayerMissions(playerId).catch(console.error)
+      }
+    })
+    return () => unsub()
+  }, [playerId])
+
+  // ─── Tasks + Inbox підписки ─────────────────────────────────
+  useEffect(() => {
+    if (!player) return
+    const u1 = subscribeTasks(player.group, (data) => { setTasks(data) })
+    const u2 = subscribePlayerSubmissions(player.id, setSubmissions)
+    return () => { u1(); u2() }
+  }, [player?.group, player?.id])
+
+  useEffect(() => {
+    if (!playerId) return
+    const unsub = subscribeMessages(playerId, setMessages)
     return () => unsub()
   }, [playerId])
 
@@ -184,6 +249,11 @@ export default function City() {
         resources: newResources,
       })
       showFeedback('success', `${bConfig.name} → Рівень ${currentLevel + 1} ✓`)
+      // Прогрес місій: будівля / сюжетні
+      updateMissionProgress(player.id, 'upgrade_building', {
+        target: buildingId,
+        level: currentLevel + 1,
+      }).catch(console.error)
     } catch {
       showFeedback('error', 'Помилка апгрейду')
     }
@@ -225,6 +295,7 @@ export default function City() {
     try {
       await startResearch(player.id, cellIndex)
       showFeedback('success', 'Лабораторія вирушила досліджувати ділянку!')
+      updateMissionProgress(player.id, 'start_research').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -243,6 +314,7 @@ export default function City() {
     try {
       await buildMine(player.id, cellIndex)
       showFeedback('success', 'Копальню побудовано! Вона вже починає видобуток.')
+      updateMissionProgress(player.id, 'build_mine').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -253,6 +325,7 @@ export default function City() {
       const { resource, amount } = await collectMine(player.id, cellIndex)
       const info = RESOURCE_ICONS[resource]
       showFeedback('success', `Зібрано: ${info?.icon || ''} +${amount} ${info?.name || resource}`)
+      updateMissionProgress(player.id, 'collect_mine').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -288,8 +361,10 @@ export default function City() {
   // ─── Замок ──────────────────────────────────────────────────
   async function handleCastleUpgrade() {
     try {
+      const castleLevel = (player.castleLevel || 0) + 1
       await upgradeCastle(player.id)
       showFeedback('success', 'Замок покращено!')
+      updateMissionProgress(player.id, 'upgrade_castle', { level: castleLevel }).catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -300,6 +375,7 @@ export default function City() {
     try {
       await recruitUnit(player.id, unitId)
       showFeedback('success', 'Юніта найнято!')
+      updateMissionProgress(player.id, 'recruit_unit').catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -328,6 +404,21 @@ export default function City() {
     navigate('/')
   }
 
+  function toggleSection(id) {
+    setOpenSections(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      saveOpenSections(next)
+      return next
+    })
+  }
+
+  async function handleOpenSubmit(task) {
+    const result = await submitOpenTask({ player, task })
+    if (result?.error) return
+    setTaskCompletion({ task, player })
+  }
+
   function showFeedback(type, text) {
     setFeedback({ type, text })
     setTimeout(() => setFeedback({ type: '', text: '' }), 4000)
@@ -343,23 +434,34 @@ export default function City() {
     badge: item.id === 'inbox' ? unreadMessages : 0,
   }))
 
+  const missionReadyCount = missions.filter(m => m.status === 'completed').length
+
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
 
       {/* ─── Шапка ─── */}
       <header className="sticky top-0 z-40 bg-[var(--bg2)] border-b border-[var(--border)] p-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{heroClass.icon}</span>
+            <span className="text-xl">{heroClass.icon}</span>
             <div>
-              <div className="font-semibold text-white leading-tight">{player.name}</div>
-              <div className="text-xs text-[#666]">
-                {player.heroName} · {heroClass.name} · Рівень {xpProgress.level}
-              </div>
+              <div className="font-semibold text-white text-sm leading-tight">{player.heroName}</div>
+              <div className="text-[11px] text-[#666]">{heroClass.name} · Рів.{xpProgress.level} · {player.group}</div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className="text-xs text-[#555]">{player.group}</div>
+          <div className="flex items-center gap-2">
+            {/* Місії */}
+            <button
+              onClick={() => setShowMissions(true)}
+              className="relative flex items-center text-xs bg-[rgba(0,255,136,0.1)] border border-[rgba(0,255,136,0.25)] text-[var(--neon)] rounded px-2 py-1 font-mono hover:bg-[rgba(0,255,136,0.2)] transition-colors"
+            >
+              📋
+              {missionReadyCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[var(--accent)] text-white text-[9px] flex items-center justify-center font-bold">
+                  {missionReadyCount}
+                </span>
+              )}
+            </button>
             <button
               onClick={() => setShowLogout(true)}
               className="text-[10px] uppercase tracking-wider text-[#333] hover:text-[var(--accent)] transition-colors"
@@ -370,6 +472,32 @@ export default function City() {
         </div>
         <ResourceBar resources={player.resources} diamonds={player.diamonds} />
       </header>
+
+      {/* ─── Топ-таби ─── */}
+      <div className="sticky top-[calc(var(--header-h,72px))] z-30 bg-[var(--bg2)] border-b border-[var(--border)] flex">
+        {[
+          { id: 'city',  label: '🏙️ Місто' },
+          { id: 'tasks', label: `⚔️ Завдання` },
+          { id: 'inbox', label: '📬 Пошта', badge: unreadMessages },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`relative flex-1 py-2.5 text-xs font-mono tracking-wider transition-all
+              ${activeTab === t.id
+                ? 'border-b-2 border-[var(--accent)] text-white'
+                : 'text-[#555] hover:text-[#888]'
+              }`}
+          >
+            {t.label}
+            {t.badge > 0 && (
+              <span className="absolute top-1.5 right-2 w-4 h-4 rounded-full bg-[var(--accent)] text-white text-[9px] flex items-center justify-center font-bold">
+                {t.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
       {/* ─── Модалка виходу ─── */}
       {showLogout && (
@@ -382,9 +510,7 @@ export default function City() {
             onClick={e => e.stopPropagation()}
           >
             <h3 className="font-bebas text-xl tracking-wider text-white">ВИЙТИ З АКАУНТУ?</h3>
-            <p className="text-sm text-[#888]">
-              Твоє місто та ресурси збережені. Увійдеш знову через Landing.
-            </p>
+            <p className="text-sm text-[#888]">Твоє місто та ресурси збережені.</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={handleLogout} className="btn btn-accent text-sm">ВИЙТИ</button>
               <button onClick={() => setShowLogout(false)} className="btn btn-ghost text-sm">СКАСУВАТИ</button>
@@ -394,37 +520,64 @@ export default function City() {
       )}
 
       {/* ─── Контент ─── */}
-      <main className="flex-1 p-4 pb-20 max-w-2xl mx-auto w-full">
+      <main className="flex-1 pb-20 max-w-2xl mx-auto w-full">
         {feedback.text && (
-          <div className="mb-4">
+          <div className="px-4 pt-3">
             {feedback.type === 'error'   && <ErrorMsg text={feedback.text} />}
             {feedback.type === 'success' && <SuccessMsg text={feedback.text} />}
           </div>
         )}
 
-        <CityTab
-          player={player}
-          buildings={buildings}
-          xpProgress={xpProgress}
-          heroClass={heroClass}
-          onWorkerToggle={handleWorkerToggle}
-          onUpgrade={handleUpgrade}
-          onWorkerReset={handleWorkerReset}
-          onStartResearch={handleStartResearch}
-          onRevealCell={handleRevealCell}
-          onBuildMine={handleBuildMine}
-          onCollectMine={handleCollectMine}
-          onUpgradeMine={handleUpgradeMine}
-          onPlaceBuilding={handlePlaceBuilding}
-          onRemoveBuilding={handleRemoveBuilding}
-          onCastleUpgrade={handleCastleUpgrade}
-          onRecruitUnit={handleRecruitUnit}
-          onUpgradeUnit={handleUpgradeUnit}
-          onSetFormation={handleSetFormation}
-        />
+        {activeTab === 'city' && (
+          <div className="p-4">
+            <CityTab
+              player={player}
+              buildings={buildings}
+              xpProgress={xpProgress}
+              heroClass={heroClass}
+              openSections={openSections}
+              toggleSection={toggleSection}
+              onWorkerToggle={handleWorkerToggle}
+              onUpgrade={handleUpgrade}
+              onWorkerReset={handleWorkerReset}
+              onStartResearch={handleStartResearch}
+              onRevealCell={handleRevealCell}
+              onBuildMine={handleBuildMine}
+              onCollectMine={handleCollectMine}
+              onUpgradeMine={handleUpgradeMine}
+              onPlaceBuilding={handlePlaceBuilding}
+              onRemoveBuilding={handleRemoveBuilding}
+              onCastleUpgrade={handleCastleUpgrade}
+              onRecruitUnit={handleRecruitUnit}
+              onUpgradeUnit={handleUpgradeUnit}
+              onSetFormation={handleSetFormation}
+            />
+          </div>
+        )}
+
+        {activeTab === 'tasks' && (
+          <TasksTabContent
+            player={player}
+            tasks={tasks}
+            submissions={submissions}
+            taskFilter={taskFilter}
+            setTaskFilter={setTaskFilter}
+            activeTask={activeTask}
+            setActiveTask={setActiveTask}
+            onOpenSubmit={handleOpenSubmit}
+            navigate={navigate}
+          />
+        )}
+
+        {activeTab === 'inbox' && (
+          <InboxTabContent
+            player={player}
+            messages={messages}
+          />
+        )}
       </main>
 
-      {/* ─── Левел-ап модалка ─── */}
+      {/* ─── Модалки ─── */}
       {levelUp && (
         <LevelUpModal
           level={levelUp.level}
@@ -434,12 +587,47 @@ export default function City() {
         />
       )}
 
-      <BottomNav items={navItems} active="city" onChange={id => {
-        if (id === 'map')   navigate('/map')
-        if (id === 'tasks') navigate('/tasks')
-        if (id === 'inbox') navigate('/inbox')
-        if (id === 'trade') navigate('/trade')
-      }} />
+      {showMissions && (
+        <MissionsPanel
+          missions={missions}
+          onClaim={async (docId) => {
+            try {
+              await claimMissionReward(playerId, docId)
+              showFeedback('success', 'Нагороду отримано!')
+            } catch (err) {
+              showFeedback('error', err.message)
+            }
+          }}
+          onClose={() => setShowMissions(false)}
+        />
+      )}
+
+      {activeTask?.type === 'test' && (
+        <TestModal
+          task={activeTask}
+          player={player}
+          existingSub={submissions[activeTask.id]}
+          onClose={() => setActiveTask(null)}
+        />
+      )}
+
+      {taskCompletion && (
+        <CompletionCard
+          task={taskCompletion.task}
+          player={taskCompletion.player}
+          onClose={() => setTaskCompletion(null)}
+        />
+      )}
+
+      <BottomNav
+        items={NAV_ITEMS.map(item => ({ ...item, badge: item.id === 'inbox' ? unreadMessages : 0 }))}
+        active={activeTab === 'city' ? 'city' : activeTab}
+        onChange={id => {
+          if (id === 'map')   navigate('/map')
+          if (id === 'trade') navigate('/trade')
+          if (id === 'city' || id === 'tasks' || id === 'inbox') setActiveTab(id)
+        }}
+      />
     </div>
   )
 }
@@ -486,9 +674,44 @@ function WorkerResetTimer({ lastWorkerReset }) {
   )
 }
 
+// ─── Collapsible секція ───────────────────────────────────────
+function CollapsibleSection({ id, title, open, onToggle, badge, children }) {
+  return (
+    <section>
+      <button
+        onClick={() => onToggle(id)}
+        className="w-full flex items-center justify-between mb-2 group"
+      >
+        <div className="flex items-center gap-2">
+          <div className="h-0.5 w-3 bg-[var(--accent)]" />
+          <h2 className="font-bebas text-base tracking-widest text-[#888] group-hover:text-white transition-colors">
+            {title}
+          </h2>
+          {badge != null && badge > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)] text-white font-bold">
+              {badge}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-0.5 flex-1 bg-[var(--border)]" style={{ width: 40 }} />
+          <span
+            className="text-[#444] text-xs transition-transform duration-200"
+            style={{ display: 'inline-block', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+          >
+            ▼
+          </span>
+        </div>
+      </button>
+      {open && <div className="mb-1">{children}</div>}
+    </section>
+  )
+}
+
 // ─── Вкладка МІСТО ────────────────────────────────────────────
 function CityTab({
   player, buildings, xpProgress, heroClass,
+  openSections, toggleSection,
   onWorkerToggle, onUpgrade, onWorkerReset,
   onStartResearch, onRevealCell, onBuildMine, onCollectMine, onUpgradeMine,
   onPlaceBuilding, onRemoveBuilding,
@@ -500,21 +723,11 @@ function CityTab({
   const hasProd      = Object.values(totalProd).some(v => v > 0)
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
 
       {/* ─── ГЕРОЙ ─── */}
-      <section>
-        <SectionTitle>ГЕРОЙ</SectionTitle>
+      <CollapsibleSection id="hero" title="ГЕРОЙ" open={openSections.has('hero')} onToggle={toggleSection}>
         <Card>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg bg-[var(--bg3)] flex items-center justify-center text-2xl">
-              {heroClass.icon}
-            </div>
-            <div className="flex-1">
-              <div className="font-bebas text-xl text-white tracking-wide">{player.heroName}</div>
-              <div className="text-sm text-[#888]">{heroClass.name} · {player.group}</div>
-            </div>
-          </div>
           <XPBar {...xpProgress} />
           <div className="grid grid-cols-3 gap-2 mt-3">
             {[
@@ -530,12 +743,11 @@ function CityTab({
             ))}
           </div>
         </Card>
-      </section>
+      </CollapsibleSection>
 
       {/* ─── ВИРОБНИЦТВО ─── */}
       {hasProd && (
-        <section>
-          <SectionTitle>ВИРОБНИЦТВО/ГОД</SectionTitle>
+        <CollapsibleSection id="production" title="ВИРОБНИЦТВО/ГОД" open={openSections.has('production')} onToggle={toggleSection}>
           <Card className="py-3">
             <div className="flex flex-wrap gap-3">
               {Object.entries(totalProd).map(([res, rate]) => {
@@ -546,9 +758,7 @@ function CityTab({
                   <div key={res} className="flex items-center gap-1.5">
                     <span className="text-lg">{info.icon}</span>
                     <div>
-                      <div className="font-mono text-sm font-bold" style={{ color: info.color }}>
-                        +{rate}/год
-                      </div>
+                      <div className="font-mono text-sm font-bold" style={{ color: info.color }}>+{rate}/год</div>
                       <div className="text-[10px] text-[#555]">{info.name}</div>
                     </div>
                   </div>
@@ -556,49 +766,35 @@ function CityTab({
               })}
             </div>
           </Card>
-        </section>
+        </CollapsibleSection>
       )}
 
       {/* ─── РОБІТНИКИ ─── */}
-      <section>
-        <SectionTitle>РОБІТНИКИ</SectionTitle>
+      <CollapsibleSection id="workers" title="РОБІТНИКИ" open={openSections.has('workers')} onToggle={toggleSection}>
         <Card>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-xl">👥</span>
               <div>
-                <div className="font-semibold text-white">
-                  {totalPlaced}/{totalWorkers} розміщено
-                </div>
+                <div className="font-semibold text-white">{totalPlaced}/{totalWorkers} розміщено</div>
                 <div className="text-xs text-[#555]">{totalWorkers - totalPlaced} вільних</div>
               </div>
             </div>
-            {/* Смужки робітників */}
             <div className="flex gap-1">
               {Array.from({ length: totalWorkers }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-3 h-6 rounded-sm transition-colors ${
-                    i < totalPlaced ? 'bg-[var(--neon)]' : 'bg-[var(--border)]'
-                  }`}
-                />
+                <div key={i} className={`w-3 h-6 rounded-sm transition-colors ${i < totalPlaced ? 'bg-[var(--neon)]' : 'bg-[var(--border)]'}`} />
               ))}
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Button variant="ghost" className="w-full text-sm" onClick={onWorkerReset}>
-              🔄 ПЕРЕРОЗПОДІЛИТИ
-            </Button>
-            <div className="text-center">
-              <WorkerResetTimer lastWorkerReset={player.lastWorkerReset} />
-            </div>
-          </div>
+          <Button variant="ghost" className="w-full text-sm" onClick={onWorkerReset}>
+            🔄 ПЕРЕРОЗПОДІЛИТИ
+          </Button>
+          <div className="text-center mt-1"><WorkerResetTimer lastWorkerReset={player.lastWorkerReset} /></div>
         </Card>
-      </section>
+      </CollapsibleSection>
 
       {/* ─── БУДІВЛІ ─── */}
-      <section>
-        <SectionTitle>БУДІВЛІ</SectionTitle>
+      <CollapsibleSection id="buildings" title="БУДІВЛІ" open={openSections.has('buildings')} onToggle={toggleSection}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {buildings.map(building => {
             const pb      = player.buildings[building.id] || { level: 0, workers: 0 }
@@ -606,7 +802,6 @@ function CityTab({
             const canUpgrade = nextLvl
               ? Object.entries(nextLvl.cost).every(([res, cost]) => (player.resources[res] || 0) >= cost)
               : false
-
             return (
               <BuildingCard
                 key={building.id}
@@ -621,16 +816,14 @@ function CityTab({
             )
           })}
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* ─── ПОЛЕ МІСТА ─── */}
       {player.resourceMap && (
-        <section>
-          <SectionTitle>ПОЛЕ МІСТА</SectionTitle>
+        <CollapsibleSection id="grid" title="ПОЛЕ МІСТА" open={openSections.has('grid')} onToggle={toggleSection}>
           <Card className="p-3">
             <p className="text-xs text-[#555] mb-3 leading-relaxed">
               Тисни на клітинку щоб розмістити будівлю або дослідити ділянку (💾 50 Бітів, ⏱ 6 год).
-              На «?» клітинках є поклади ресурсів — знайди та добувай!
             </p>
             <MiningGrid
               player={player}
@@ -646,25 +839,403 @@ function CityTab({
               onUpgrade={onUpgrade}
             />
           </Card>
-        </section>
+        </CollapsibleSection>
       )}
 
       {/* ─── ЗАМОК ─── */}
-      <section>
-        <SectionTitle>ЗАМОК</SectionTitle>
+      <CollapsibleSection id="castle" title="ЗАМОК" open={openSections.has('castle')} onToggle={toggleSection}>
         <CastlePanel player={player} onUpgrade={onCastleUpgrade} />
-      </section>
+      </CollapsibleSection>
 
       {/* ─── АРМІЯ ─── */}
-      <section>
-        <SectionTitle>АРМІЯ</SectionTitle>
+      <CollapsibleSection id="army" title="АРМІЯ" open={openSections.has('army')} onToggle={toggleSection}>
         <UnitsPanel
           player={player}
           onRecruit={onRecruitUnit}
           onUpgrade={onUpgradeUnit}
           onSetFormation={onSetFormation}
         />
-      </section>
+      </CollapsibleSection>
+    </div>
+  )
+}
+
+// ─── Вкладка ЗАВДАННЯ ─────────────────────────────────────────
+const MSG_ICONS = { trade: '🔄', task: '⚔️', admin: '📢', system: '⚙️' }
+
+function TasksTabContent({ player, tasks, submissions, taskFilter, setTaskFilter, activeTask, setActiveTask, onOpenSubmit, navigate }) {
+  const filtered = tasks.filter(t => {
+    if (taskFilter === 'open') return t.type === 'open' || !t.type
+    if (taskFilter === 'test') return t.type === 'test'
+    return true
+  })
+  const sorted = [...filtered].sort((a, b) => {
+    const doneA = submissions[a.id]?.status === 'approved' ? 1 : 0
+    const doneB = submissions[b.id]?.status === 'approved' ? 1 : 0
+    return doneA - doneB
+  })
+  const doneCount    = tasks.filter(t => submissions[t.id]?.status === 'approved').length
+  const pendingCount = tasks.filter(t => submissions[t.id]?.status === 'pending').length
+  const openCount    = tasks.filter(t => t.type === 'open' || !t.type).length
+  const testCount    = tasks.filter(t => t.type === 'test').length
+
+  return (
+    <div className="p-4 flex flex-col gap-3">
+      {/* Статистика */}
+      <div className="flex items-center gap-3 text-xs">
+        {doneCount > 0 && <span className="text-[var(--neon)]">✓ {doneCount} виконано</span>}
+        {pendingCount > 0 && <span className="text-[var(--gold)]">⏳ {pendingCount} перевіряється</span>}
+      </div>
+
+      {/* Опитування banner */}
+      <button
+        onClick={() => navigate('/surveys')}
+        className="w-full flex items-center gap-3 p-3 rounded-lg border border-[rgba(0,255,136,0.25)] bg-[rgba(0,255,136,0.05)] hover:bg-[rgba(0,255,136,0.1)] transition-colors text-left"
+      >
+        <span className="text-xl">🧠</span>
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-[var(--neon)]">Опитування</div>
+          <div className="text-xs text-[#555]">Відповідай та отримуй ресурси</div>
+        </div>
+        <span className="text-[#555]">→</span>
+      </button>
+
+      {/* Фільтр */}
+      <div className="flex gap-1 bg-[var(--bg3)] rounded-lg p-1">
+        {[
+          { id: 'all',  label: `Всі (${tasks.length})` },
+          { id: 'open', label: `Відкриті (${openCount})` },
+          { id: 'test', label: `Тести (${testCount})` },
+        ].map(f => (
+          <button
+            key={f.id}
+            onClick={() => setTaskFilter(f.id)}
+            className={`flex-1 py-1.5 text-xs font-mono rounded transition-all ${
+              taskFilter === f.id ? 'bg-[var(--card)] text-white' : 'text-[#555] hover:text-[#888]'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Список */}
+      {sorted.length === 0 ? (
+        <EmptyState icon="⚔️" text="Немає активних завдань" />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {sorted.map(task => (
+            <InlineTaskCard
+              key={task.id}
+              task={task}
+              submission={submissions[task.id]}
+              onSubmitOpen={() => onOpenSubmit(task)}
+              onStartTest={() => setActiveTask(task)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InlineTaskCard({ task, submission, onSubmitOpen, onStartTest }) {
+  const isPending  = submission?.status === 'pending'
+  const isApproved = submission?.status === 'approved'
+  const isRejected = submission?.status === 'rejected'
+
+  return (
+    <Card className={isApproved ? 'opacity-70' : ''}>
+      {task.storyText && <LoreBanner text={task.storyText} />}
+      <div className={`flex flex-col gap-3 ${task.storyText ? 'mt-3' : ''}`}>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${task.type === 'test' ? 'bg-[rgba(0,170,255,0.15)] text-[var(--info)] border border-[rgba(0,170,255,0.3)]' : 'bg-[rgba(255,69,0,0.15)] text-[var(--accent)] border border-[rgba(255,69,0,0.3)]'}`}>
+            {task.type === 'test' ? '📝 ТЕСТ' : '📋 ВІДКРИТЕ'}
+          </span>
+          {task.type === 'test' && task.questions?.length > 0 && (
+            <span className="text-xs text-[#555]">{task.questions.length} питань</span>
+          )}
+        </div>
+        <div>
+          <h3 className="font-semibold text-white text-base">{task.title}</h3>
+          {task.description && <p className="text-sm text-[#888] mt-1 leading-relaxed">{task.description}</p>}
+        </div>
+        {task.reward && Object.values(task.reward).some(v => v > 0) && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-[#555]">Нагорода:</span>
+            {Object.entries(task.reward).map(([res, amount]) =>
+              amount > 0 ? <ResourceBadge key={res} resource={res} amount={amount} showName /> : null
+            )}
+          </div>
+        )}
+        {isApproved && (
+          <div className="flex items-center gap-2 p-2 bg-[rgba(0,255,136,0.07)] border border-[rgba(0,255,136,0.2)] rounded">
+            <span>✅</span>
+            <div>
+              <div className="text-sm font-semibold text-[var(--neon)]">Виконано та підтверджено</div>
+              {submission.testScore != null && <div className="text-xs text-[#888]">Результат: {submission.testScore}/{submission.testTotal}</div>}
+            </div>
+          </div>
+        )}
+        {isPending && (
+          <div className="flex items-center gap-2 p-2 bg-[rgba(255,215,0,0.07)] border border-[rgba(255,215,0,0.2)] rounded">
+            <span>⏳</span>
+            <div className="text-sm font-semibold text-[var(--gold)]">Очікує підтвердження</div>
+          </div>
+        )}
+        {isRejected && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 p-2 bg-[rgba(255,69,0,0.07)] border border-[rgba(255,69,0,0.2)] rounded">
+              <span>❌</span>
+              <div className="text-sm font-semibold text-[var(--accent)]">Не зараховано — спробуй ще раз</div>
+            </div>
+            {task.type === 'open' && <Button variant="ghost" className="w-full text-sm" onClick={onSubmitOpen}>ЗДАТИ ЗНОВУ ✓</Button>}
+            {task.type === 'test' && <Button variant="ghost" className="w-full text-sm" onClick={onStartTest}>ПРОЙТИ ТЕСТ ЗНОВУ</Button>}
+          </div>
+        )}
+        {!submission && task.type === 'open' && <Button variant="accent" className="w-full" onClick={onSubmitOpen}>ВИКОНАВ ✓</Button>}
+        {!submission && task.type === 'test' && <Button variant="neon" className="w-full" onClick={onStartTest}>РОЗПОЧАТИ ТЕСТ →</Button>}
+      </div>
+    </Card>
+  )
+}
+
+// ─── Вкладка ПОШТА ────────────────────────────────────────────
+function InboxTabContent({ player, messages }) {
+  const unread = messages.filter(m => !m.read)
+  const read   = messages.filter(m => m.read)
+
+  return (
+    <div className="p-4">
+      {/* Шапка */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="font-bebas text-lg tracking-widest text-white">ПОШТА</h2>
+          {unread.length > 0 && <p className="text-xs text-[var(--accent)]">{unread.length} непрочитаних</p>}
+        </div>
+        {unread.length > 0 && (
+          <button
+            onClick={() => markAllMessagesRead(player.id)}
+            className="text-xs text-[#555] hover:text-[var(--neon)] transition-colors"
+          >
+            Прочитати всі
+          </button>
+        )}
+      </div>
+
+      {messages.length === 0 ? (
+        <EmptyState icon="📬" text="Немає повідомлень" />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {unread.map(msg => <InlineMessageItem key={msg.id} msg={msg} onRead={() => markMessageRead(msg.id)} />)}
+          {read.length > 0 && unread.length > 0 && (
+            <div className="text-xs text-[#555] text-center py-2 uppercase tracking-wider">— прочитані —</div>
+          )}
+          {read.map(msg => <InlineMessageItem key={msg.id} msg={msg} onRead={() => {}} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InlineMessageItem({ msg, onRead }) {
+  const icon = MSG_ICONS[msg.type] || '📩'
+  const timeStr = msg.createdAt?.toDate
+    ? msg.createdAt.toDate().toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : ''
+  return (
+    <button
+      onClick={onRead}
+      className={`w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${msg.read ? 'bg-[var(--bg2)] border-[var(--border)] opacity-60' : 'bg-[var(--card)] border-[var(--border)] hover:border-[#333]'}`}
+    >
+      <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
+        <span className="text-lg">{icon}</span>
+        {!msg.read && <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className={`text-xs font-semibold ${msg.read ? 'text-[#555]' : 'text-[#888]'}`}>{msg.fromName}</span>
+          <span className="text-[10px] text-[#444] shrink-0">{timeStr}</span>
+        </div>
+        <p className={`text-sm mt-0.5 ${msg.read ? 'text-[#555]' : 'text-[var(--text)]'}`}>{msg.text}</p>
+      </div>
+    </button>
+  )
+}
+
+// ─── Тест-модалка (вбудована в City) ─────────────────────────
+function TestModal({ task, player, existingSub, onClose }) {
+  const [currentQ, setCurrentQ] = useState(0)
+  const [answers, setAnswers]   = useState({})
+  const [result, setResult]     = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+
+  const questions = task.questions || []
+  const totalQ    = questions.length
+  const answered  = Object.keys(answers).length
+
+  if (existingSub?.status === 'approved') {
+    return (
+      <TestOverlay onClose={onClose}>
+        <div className="flex flex-col items-center gap-4 py-8 px-4">
+          <span className="text-5xl">🏆</span>
+          <div className="font-bebas text-4xl text-[var(--neon)]">{existingSub.testScore}/{existingSub.testTotal}</div>
+          <p className="text-[#888] text-sm text-center">Тест вже пройдено та підтверджено</p>
+          <Button variant="ghost" className="w-full" onClick={onClose}>ЗАКРИТИ</Button>
+        </div>
+      </TestOverlay>
+    )
+  }
+
+  async function handleSubmit() {
+    if (answered < totalQ) { setError(`Дай відповідь на всі ${totalQ} питань`); return }
+    setLoading(true); setError('')
+    try {
+      const res = await submitTest({ player, task, answers })
+      setResult(res)
+    } catch {
+      setError('Помилка надсилання. Спробуй ще раз.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function selectAnswer(qId, opt) {
+    setAnswers(prev => ({ ...prev, [qId]: opt }))
+    setError('')
+    if (currentQ < totalQ - 1) setTimeout(() => setCurrentQ(q => q + 1), 300)
+  }
+
+  return (
+    <TestOverlay onClose={onClose}>
+      <div className="sticky top-0 bg-[var(--card)] border-b border-[var(--border)] p-4 z-10">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-bebas text-lg tracking-wide text-white truncate pr-2">{task.title}</h3>
+          <button onClick={onClose} className="text-[#555] hover:text-white shrink-0 w-7 h-7 flex items-center justify-center">✕</button>
+        </div>
+        {!result && (
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between text-xs text-[#555]">
+              <span>Питання {currentQ + 1} з {totalQ}</span>
+              <span>{answered}/{totalQ}</span>
+            </div>
+            <div className="h-1 bg-[var(--border)] rounded-full overflow-hidden">
+              <div className="h-full bg-[var(--accent)] rounded-full transition-all" style={{ width: `${(answered / totalQ) * 100}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="p-4 flex flex-col gap-5">
+        {result ? (
+          <TestResultScreen result={result} task={task} answers={answers} onClose={onClose} />
+        ) : (
+          <>
+            <div className="flex gap-1.5 flex-wrap">
+              {questions.map((q, idx) => (
+                <button key={q.id} onClick={() => setCurrentQ(idx)}
+                  className={`w-8 h-8 rounded text-xs font-mono font-bold transition-all ${answers[q.id] ? 'bg-[var(--accent)] text-white' : idx === currentQ ? 'border-2 border-[var(--accent)] text-[var(--accent)]' : 'bg-[var(--border)] text-[#555]'}`}
+                >{idx + 1}</button>
+              ))}
+            </div>
+            {questions[currentQ] && (
+              <TestQuestion
+                question={questions[currentQ]}
+                questionNum={currentQ + 1}
+                totalNum={totalQ}
+                selectedAnswer={answers[questions[currentQ].id]}
+                onSelect={(opt) => selectAnswer(questions[currentQ].id, opt)}
+              />
+            )}
+            {error && <ErrorMsg text={error} />}
+            <div className="flex gap-2">
+              {currentQ > 0 && <Button variant="ghost" className="flex-1 text-sm" onClick={() => setCurrentQ(q => q - 1)}>← Назад</Button>}
+              {currentQ < totalQ - 1
+                ? <Button variant="ghost" className="flex-1 text-sm" onClick={() => setCurrentQ(q => q + 1)}>Далі →</Button>
+                : <Button variant="accent" className="flex-1" onClick={handleSubmit} disabled={loading || answered < totalQ}>
+                    {loading ? 'Перевіряю...' : answered < totalQ ? `Ще ${totalQ - answered}` : 'ВІДПРАВИТИ ✓'}
+                  </Button>
+              }
+            </div>
+          </>
+        )}
+      </div>
+    </TestOverlay>
+  )
+}
+
+function TestQuestion({ question, questionNum, selectedAnswer, onSelect }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="font-semibold text-white leading-snug">
+        <span className="text-[var(--accent)] font-mono mr-1">{questionNum}.</span>
+        {question.text}
+      </p>
+      <div className="flex flex-col gap-2">
+        {Object.entries(question.options).map(([opt, text]) => (
+          <button key={opt} onClick={() => onSelect(opt)}
+            className={`flex items-start gap-3 p-3 rounded-lg border text-left text-sm transition-all ${selectedAnswer === opt ? 'border-[var(--accent)] bg-[rgba(255,69,0,0.12)] text-white' : 'border-[var(--border)] bg-[var(--bg2)] text-[#888] hover:border-[#333]'}`}
+          >
+            <span className={`font-mono font-bold shrink-0 w-5 h-5 rounded flex items-center justify-center text-xs ${selectedAnswer === opt ? 'bg-[var(--accent)] text-white' : 'text-[#555]'}`}>{opt}</span>
+            <span>{text}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TestResultScreen({ result, task, answers, onClose }) {
+  const isPerfect = result.correct === result.total
+  const percent   = Math.round((result.correct / result.total) * 100)
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col items-center gap-3 py-4">
+        <div className="text-5xl">{isPerfect ? '🏆' : result.correct >= result.total / 2 ? '📊' : '📉'}</div>
+        <div className="font-bebas text-5xl text-white">{result.correct}<span className="text-[#555] text-3xl">/{result.total}</span></div>
+        <div className={`text-lg font-semibold ${isPerfect ? 'text-[var(--gold)]' : 'text-[#888]'}`}>
+          {isPerfect ? '🌟 Ідеально!' : `${percent}% правильних`}
+        </div>
+        {result.xpGain > 0 && <div className="text-xs text-[var(--neon)]">+{result.xpGain} XP</div>}
+        {Object.values(result.reward).some(v => v > 0) && (
+          <div className="flex flex-wrap gap-2 justify-center">
+            {Object.entries(result.reward).map(([res, amount]) =>
+              amount > 0 ? <ResourceBadge key={res} resource={res} amount={amount} showName /> : null
+            )}
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-[#555] uppercase tracking-wider">Розбір відповідей</p>
+        {(task.questions || []).map(q => {
+          const isCorrect = answers[q.id] === q.correct
+          return (
+            <div key={q.id} className={`p-3 rounded-lg border text-sm ${isCorrect ? 'border-[rgba(0,255,136,0.3)] bg-[rgba(0,255,136,0.05)]' : 'border-[rgba(255,69,0,0.3)] bg-[rgba(255,69,0,0.05)]'}`}>
+              <div className="flex items-start gap-2 mb-1">
+                <span>{isCorrect ? '✅' : '❌'}</span>
+                <span className="text-white font-medium">{q.text}</span>
+              </div>
+              {!isCorrect && (
+                <div className="ml-6 text-xs space-y-0.5">
+                  <div className="text-[var(--accent)]">Твоя відповідь: <b>{answers[q.id]}</b> — {q.options[answers[q.id]]}</div>
+                  <div className="text-[var(--neon)]">Правильно: <b>{q.correct}</b> — {q.options[q.correct]}</div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <Button variant="ghost" className="w-full" onClick={onClose}>ЗАКРИТИ</Button>
+    </div>
+  )
+}
+
+function TestOverlay({ children, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-end sm:items-center justify-center">
+      <div className="w-full sm:max-w-lg bg-[var(--card)] border border-[var(--border)] rounded-t-2xl sm:rounded-xl flex flex-col overflow-hidden" style={{ maxHeight: '92vh' }}>
+        <div className="overflow-y-auto flex-1 flex flex-col">{children}</div>
+      </div>
     </div>
   )
 }
@@ -717,12 +1288,3 @@ function LevelUpModal({ level, heroClass, heroName, onClose }) {
   )
 }
 
-function SectionTitle({ children }) {
-  return (
-    <div className="flex items-center gap-3 mb-3">
-      <div className="h-0.5 w-3 bg-[var(--accent)]" />
-      <h2 className="font-bebas text-lg tracking-widest text-[#888]">{children}</h2>
-      <div className="h-0.5 flex-1 bg-[var(--border)]" />
-    </div>
-  )
-}
