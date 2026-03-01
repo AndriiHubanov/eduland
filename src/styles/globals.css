@@ -267,13 +267,13 @@ body {
 .resource-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: 5px;
+  padding: 4px 10px;
   background-color: var(--bg3);
   border: 1px solid var(--border);
   border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 700;
   white-space: nowrap;
 }
 
