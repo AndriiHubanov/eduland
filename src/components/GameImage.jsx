@@ -1,24 +1,36 @@
-// ─── GameImage — зображення з emoji-fallback ───
-// Спробує завантажити PNG; якщо файл відсутній — показує emoji.
+// ─── GameImage — зображення з SVG → emoji fallback ───
+// PNG → SVG → emoji (для SVG-плейсхолдерів)
 
 import { useState } from 'react'
 
-/**
- * @param {string}  src      — шлях до зображення (з assets.js)
- * @param {string}  fallback — emoji, що показується коли зображення немає
- * @param {string}  alt      — alt-текст для accessibility
- * @param {string}  className
- * @param {object}  style
- * @param {boolean} pixelated — увімкнути image-rendering: pixelated
- */
 export default function GameImage({ src, fallback, alt = '', className = '', style = {}, pixelated = false }) {
-  const [failed, setFailed] = useState(false)
+  const [state, setState] = useState('png') // 'png' | 'svg' | 'emoji'
 
-  if (failed || !src) {
+  const imgStyle = {
+    ...style,
+    ...(pixelated ? { imageRendering: 'pixelated' } : {}),
+  }
+
+  if (state === 'emoji' || !src) {
     return (
       <span className={className} style={style} role="img" aria-label={alt}>
         {fallback}
       </span>
+    )
+  }
+
+  const svgSrc = src.replace(/\.png$/, '.svg')
+
+  if (state === 'svg') {
+    return (
+      <img
+        src={svgSrc}
+        alt={alt}
+        className={className}
+        style={imgStyle}
+        onError={() => setState('emoji')}
+        draggable={false}
+      />
     )
   }
 
@@ -27,11 +39,8 @@ export default function GameImage({ src, fallback, alt = '', className = '', sty
       src={src}
       alt={alt}
       className={className}
-      style={{
-        ...style,
-        ...(pixelated ? { imageRendering: 'pixelated' } : {}),
-      }}
-      onError={() => setFailed(true)}
+      style={imgStyle}
+      onError={() => setState('svg')}
       draggable={false}
     />
   )
