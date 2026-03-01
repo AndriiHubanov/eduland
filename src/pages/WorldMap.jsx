@@ -482,7 +482,7 @@ function FieldMarker({ field, x, y, myExp, otherExp, tick, visible, onClick }) {
     expCountdown = formatCountdown(endsAt - Date.now())
   }
 
-  const SIZE = 44
+  const SIZE = 56
 
   const borderColor = isReady
     ? 'var(--neon)'
@@ -527,7 +527,7 @@ function FieldMarker({ field, x, y, myExp, otherExp, tick, visible, onClick }) {
         src={fieldImg(field.type, field.tier)}
         fallback={visual.icon}
         alt={visual.name}
-        className="w-7 h-7 object-contain leading-none"
+        className="w-10 h-10 object-contain leading-none drop-shadow-md"
         style={{ opacity: isRuinDead ? 0.25 : 1 }}
       />
 

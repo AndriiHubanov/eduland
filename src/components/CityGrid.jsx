@@ -260,7 +260,7 @@ function CastleTile({ level, active }) {
         src={buildingImg('castle', level)}
         fallback="🏰"
         alt={`Замок рів.${level}`}
-        className="w-full max-w-[56px] max-h-[56px] object-contain leading-none"
+        className="w-full max-w-[96px] max-h-[96px] object-contain leading-none drop-shadow-lg"
       />
       <span className={`text-[9px] font-mono leading-none mt-0.5 ${active ? 'text-[#ffd700]' : 'text-[#888]'}`}>
         {CASTLE_NAMES[level] || 'Замок'}
@@ -288,12 +288,12 @@ function BuildingTile({ bConfig, pBuilding, active }) {
 
   if (level === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-0.5 opacity-30">
+      <div className="flex flex-col items-center justify-center h-full gap-0.5 opacity-35">
         <GameImage
           src={buildingImg(bConfig.id, 1)}
           fallback={bConfig.icon}
           alt={bConfig.name}
-          className="w-full max-w-[36px] max-h-[36px] object-contain grayscale leading-none"
+          className="w-full max-w-[64px] max-h-[64px] object-contain grayscale leading-none"
         />
         <span className="text-[8px] font-mono text-[#444]">🔒</span>
       </div>
@@ -306,7 +306,7 @@ function BuildingTile({ bConfig, pBuilding, active }) {
         src={buildingImg(bConfig.id, level)}
         fallback={bConfig.icon}
         alt={`${bConfig.name} рів.${level}`}
-        className="w-full max-w-[36px] max-h-[36px] object-contain leading-none"
+        className="w-full max-w-[64px] max-h-[64px] object-contain leading-none drop-shadow-md"
       />
       <span className={`text-[8px] font-mono leading-none ${active ? 'text-[var(--neon)]' : 'text-[#666]'}`}>
         рів.{level}

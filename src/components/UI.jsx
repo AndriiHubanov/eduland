@@ -52,26 +52,29 @@ export function ResourceBadge({ resource, amount, showName = false }) {
   const info = RESOURCE_ICONS[resource]
   if (!info) return null
   return (
-    <span className="resource-badge" style={{ color: info.color }}>
-      <span>{info.icon}</span>
-      <span className="font-mono">{amount}</span>
+    <span className="resource-badge shrink-0" style={{ color: info.color }}>
+      <span className="text-base leading-none">{info.icon}</span>
+      <span className="font-bold font-mono">{amount}</span>
       {showName && <span className="text-[var(--text)]">{info.name}</span>}
     </span>
   )
 }
 
-// Рядок всіх ресурсів гравця
+// Рядок всіх ресурсів гравця (MyLands-style)
 export function ResourceBar({ resources, diamonds, className = '' }) {
   const order = ['gold', 'wood', 'stone', 'crystals', 'bits', 'code', 'bio', 'energy']
   return (
-    <div className={`flex flex-wrap gap-2 ${className}`}>
-      {order.filter(r => resources[r] !== undefined && resources[r] > 0).map(r => (
-        <ResourceBadge key={r} resource={r} amount={resources[r]} />
+    <div
+      className={`flex items-center gap-1.5 overflow-x-auto px-3 py-2 rounded-xl bg-[var(--bg2)] border border-[var(--border)] ${className}`}
+      style={{ scrollbarWidth: 'none' }}
+    >
+      {order.filter(r => resources[r] !== undefined).map(r => (
+        <ResourceBadge key={r} resource={r} amount={resources[r] || 0} />
       ))}
-      {diamonds > 0 && (
-        <span className="resource-badge" style={{ color: '#b9f2ff' }}>
-          <span>💠</span>
-          <span className="font-mono">{diamonds}</span>
+      {diamonds !== undefined && (
+        <span className="resource-badge shrink-0" style={{ color: '#b9f2ff' }}>
+          <span className="text-base leading-none">💠</span>
+          <span className="font-bold font-mono">{diamonds}</span>
         </span>
       )}
     </div>
