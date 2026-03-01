@@ -21,16 +21,23 @@ const RESOURCES = [
   { id: 'wood',     icon: '🪵', name: 'Деревина',      color: '#8B4513', how: 'Crafting матеріал (поки в резерві)' },
 ]
 
+const CASTLE_CLASS_NAMES = {
+  guardian:    { 1: 'Бункер', 2: 'Укріплений притулок', 3: 'Фортеця Стражів', 4: 'Цитадель Залізної Волі', 5: 'Бастіон Останньої Лінії' },
+  archivist:   { 1: 'Архів', 2: 'Бібліотека Кодів', 3: 'Лабораторія Знань', 4: 'Сервер Абсолютної Пам\'яті', 5: 'Сховище Істини' },
+  detective:   { 1: 'Штаб розвідки', 2: 'Слідчий центр', 3: 'Обсерваторія Тіней', 4: 'Мережа Всевидячих', 5: 'Око Бурі' },
+  coordinator: { 1: 'Комунікаційний пост', 2: 'Командний вузол', 3: 'Координаційна башта', 4: 'Нексус Зв\'язку', 5: 'Центр Глобального Контролю' },
+}
+
 const CITY_BUILDINGS = [
   {
     id: 'castle', name: 'Замок', icon: '🏰', maxLevel: 5,
     description: 'Центральна будівля. Визначає максимальний розмір армії та відкриває функції.',
     levels: [
-      { lvl: 1, cost: 'старт',     unlocks: 'Базові функції, армія до 3 юнітів' },
-      { lvl: 2, cost: '500🪙 + 50💎', unlocks: 'Армія до 5, торгівля' },
-      { lvl: 3, cost: '1200🪙 + 100💎 + 30🪨', unlocks: 'Армія до 8' },
-      { lvl: 4, cost: '2500🪙 + 200💎 + 80🪨', unlocks: 'Армія до 12' },
-      { lvl: 5, cost: '5000🪙 + 400💎 + 200🪨', unlocks: 'Максимальна армія до 20' },
+      { lvl: 1, cost: 'старт',                                          unlocks: 'Базові функції, армія до 3 юнітів' },
+      { lvl: 2, cost: '500🪙 + 200🪨',                                  unlocks: 'Армія до 5, торгівля (Координатор)' },
+      { lvl: 3, cost: '1200🪙 + 500🪨 + 50💎',                          unlocks: 'Армія до 8' },
+      { lvl: 4, cost: '3000🪙 + 1000🪨 + 200💎 + 100🔐',               unlocks: 'Армія до 12' },
+      { lvl: 5, cost: '6000🪙 + 2000🪨 + 500💎 + 500💾 + 300🔐',       unlocks: 'Максимальна армія до 15' },
     ],
   },
   {
@@ -97,6 +104,37 @@ const LAB_BUILDINGS_INFO = [
   },
 ]
 
+const NATURE_BUILDINGS = [
+  {
+    id: 'greenhouse', name: 'Теплиця', icon: '🌿', unlockLevel: 2,
+    description: 'Вирощує біоматерію та деревину',
+    production: { 1: '4🧬 + 3🪵/год', 2: '10🧬 + 7🪵/год', 3: '20🧬 + 15🪵/год' },
+    cost: { 1: '150🪙 + 30🪵', 2: '350🪙 + 15🧬', 3: '700🪙 + 40🧬 + 10⚡' },
+    synergy: '2+ робітники → +5🧬/год',
+  },
+  {
+    id: 'reactor', name: 'Реактор', icon: '⚛️', unlockLevel: 2,
+    description: 'Генерує енергію та кристали',
+    production: { 1: '5⚡ + 2💎/год', 2: '12⚡ + 5💎/год', 3: '25⚡ + 12💎/год' },
+    cost: { 1: '200🪙 + 40🪨', 2: '450🪙 + 15⚡ + 30🪨', 3: '900🪙 + 40⚡ + 20💎' },
+    synergy: '2+ робітники → +5⚡/год',
+  },
+  {
+    id: 'biolab', name: 'Біолабораторія', icon: '🧬', unlockLevel: 3,
+    description: 'Досліджує біоматерію, виробляє Код',
+    production: { 1: '3🧬 + 3🔐/год', 2: '8🧬 + 7🔐/год', 3: '16🧬 + 14🔐/год' },
+    cost: { 1: '250🪙 + 10🧬', 2: '500🪙 + 25🧬 + 10🔐', 3: '1000🪙 + 50🧬 + 25🔐' },
+    synergy: '2+ робітники → +4🔐/год',
+  },
+  {
+    id: 'solar_array', name: 'Сонячна батарея', icon: '☀️', unlockLevel: 2,
+    description: 'Перетворює сонячне світло на Енергію та Золото',
+    production: { 1: '4⚡ + 3🪙/год', 2: '10⚡ + 7🪙/год', 3: '22⚡ + 15🪙/год' },
+    cost: { 1: '180🪙 + 5💎', 2: '400🪙 + 10⚡ + 10💎', 3: '800🪙 + 30⚡ + 25💎' },
+    synergy: '2+ робітники → +5🪙/год',
+  },
+]
+
 const FIELDS_INFO = [
   { type: 'resource', name: 'Ресурсне поле', icon: '⚡🧬💎💾🔐🪙', tiers: 3, action: 'Видобуток (Екстракційна станція рів.1+)', yield: 'T1: 40-100, T2: x2, T3: x3.5' },
   { type: 'ruin',     name: 'Руїна',          icon: '🏚️🏗️🏰',        tiers: 3, action: 'Штурм (Штурмова база рів.1+ + Армія)', yield: 'XP для героя при перемозі' },
@@ -113,14 +151,14 @@ const UNIT_LIST = Object.entries(UNITS).map(([id, u]) => ({ id, ...u }))
 
 const HERO_LIST = Object.entries(HERO_CLASSES).map(([id, c]) => ({ id, ...c }))
 
+// XP_FOR_LEVEL = [0, 100, 250, 450, 700, 1000] (6 рівнів)
 const XP_LEVELS = [
-  { level: 1, xpNeeded: 0,    title: 'Новачок' },
-  { level: 2, xpNeeded: 100,  title: 'Розвідник' },
-  { level: 3, xpNeeded: 300,  title: 'Командир' },
-  { level: 4, xpNeeded: 700,  title: 'Капітан' },
-  { level: 5, xpNeeded: 1500, title: 'Генерал' },
-  { level: 6, xpNeeded: 3000, title: 'Маршал' },
-  { level: 7, xpNeeded: 5500, title: 'Легенда' },
+  { level: 1, xpNeeded: 0,    title: 'Новачок',    heroClass: 'Дозволяє найм юнітів від рів.2' },
+  { level: 2, xpNeeded: 100,  title: 'Розвідник',  heroClass: 'Відкриває дисциплінарні будівлі' },
+  { level: 3, xpNeeded: 250,  title: 'Командир',   heroClass: 'Відкриває Біолабораторію' },
+  { level: 4, xpNeeded: 450,  title: 'Капітан',    heroClass: 'Збільшення бонусів класу' },
+  { level: 5, xpNeeded: 700,  title: 'Генерал',    heroClass: 'Преміальна синергія' },
+  { level: 6, xpNeeded: 1000, title: 'Маршал',     heroClass: 'Максимальний рівень сезону' },
 ]
 
 // ─── Sections ────────────────────────────────────────────────
@@ -130,8 +168,10 @@ const SECTIONS = [
   { id: 'resources',   label: 'Ресурси' },
   { id: 'heroes',      label: 'Герої' },
   { id: 'city',        label: 'Місто' },
+  { id: 'nature',      label: 'Природничі' },
   { id: 'map',         label: 'Карта' },
   { id: 'army',        label: 'Армія' },
+  { id: 'trade',       label: 'Торгівля' },
   { id: 'progression', label: 'Прогрес' },
   { id: 'tips',        label: 'Поради' },
 ]
@@ -288,18 +328,46 @@ export default function Wiki() {
             Кожна будівля має 3 рівні + слоти для робітників.
           </p>
 
-          <h3 className="wiki-h3">Замок</h3>
-          <div className="overflow-x-auto mb-6">
+          <h3 className="wiki-h3">Замок — рівні та вартість</h3>
+          <div className="overflow-x-auto mb-4">
             <table className="wiki-table">
-              <thead><tr><th>Рів.</th><th>Вартість</th><th>Відкриває</th></tr></thead>
+              <thead><tr><th>Рів.</th><th>Вартість</th><th>Армія</th><th>Відкриває</th></tr></thead>
               <tbody>
                 {CITY_BUILDINGS[0].levels.map(l => (
                   <tr key={l.lvl}>
                     <td className="text-center font-mono text-[var(--gold)]">{l.lvl}</td>
                     <td className="text-xs font-mono text-[#666]">{l.cost}</td>
+                    <td className="text-center font-mono text-xs text-[#ff6600]">
+                      {[3,5,8,12,15][l.lvl-1]}
+                    </td>
                     <td className="text-xs text-[#888]">{l.unlocks}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="wiki-h3">Замок — назви по класу героя</h3>
+          <div className="overflow-x-auto mb-6">
+            <table className="wiki-table">
+              <thead>
+                <tr>
+                  <th>Клас</th>
+                  {[1,2,3,4,5].map(l => <th key={l}>Рів.{l}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(CASTLE_CLASS_NAMES).map(([cls, names]) => {
+                  const heroClass = HERO_LIST.find(h => h.id === cls)
+                  return (
+                    <tr key={cls}>
+                      <td className="text-sm">{heroClass?.icon} {heroClass?.name}</td>
+                      {[1,2,3,4,5].map(l => (
+                        <td key={l} className="text-[10px] text-[#555] whitespace-nowrap">{names[l]}</td>
+                      ))}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -370,6 +438,48 @@ export default function Wiki() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ════════ ПРИРОДНИЧІ НАУКИ ════════ */}
+        <section id="wiki-nature">
+          <SectionHeader id="nature" label="Природничі науки" icon="🔬" onView={setActiveSection} />
+          <p className="text-xs text-[#555] mb-4 font-mono">
+            Дисципліна «Природничі науки» — 4 унікальні будівлі, що виробляють Біоматерію, Енергію та Кристали.
+            Відкриваються після досягнення відповідного рівня героя.
+          </p>
+
+          <div className="space-y-3 mb-4">
+            {NATURE_BUILDINGS.map(b => (
+              <div key={b.id} className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] bg-[var(--bg3)]">
+                  <span className="text-xl">{b.icon}</span>
+                  <span className="font-bebas tracking-wider text-white">{b.name}</span>
+                  <span className="text-[10px] font-mono text-[#555] ml-1">— {b.description}</span>
+                  <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded border border-[rgba(255,170,0,0.3)] text-[#ffaa00]">
+                    Герой рів.{b.unlockLevel}+
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="wiki-table m-0 border-0">
+                    <thead><tr><th>Рів.</th><th>Вартість</th><th>Виробництво/год</th></tr></thead>
+                    <tbody>
+                      {[1, 2, 3].map(lvl => (
+                        <tr key={lvl}>
+                          <td className="text-center font-mono text-[var(--gold)]">{lvl}</td>
+                          <td className="text-xs font-mono text-[#666]">{b.cost[lvl]}</td>
+                          <td className="text-xs font-mono text-[var(--neon)]">{b.production[lvl]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-3 py-1.5 text-[10px] font-mono text-[#555]">
+                  ⚡ Синергія: {b.synergy}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Note>Природничі будівлі виробляють ресурси (bio, energy, crystals), потрібні для апгрейду юнітів та лабораторних будівель.</Note>
         </section>
 
         {/* ════════ КАРТА ════════ */}
@@ -485,6 +595,31 @@ export default function Wiki() {
             </table>
           </div>
 
+          <h3 className="wiki-h3">Вартість апгрейду юнітів</h3>
+          <div className="overflow-x-auto mb-6">
+            <table className="wiki-table">
+              <thead><tr><th>Юніт</th><th>До рів.2</th><th>До рів.3</th><th>Бонус класу</th></tr></thead>
+              <tbody>
+                {UNIT_LIST.map(u => (
+                  <tr key={u.id}>
+                    <td className="text-xs font-semibold text-white">{u.icon} {u.name}</td>
+                    <td className="text-[10px] font-mono text-[#666]">
+                      {Object.entries(u.upgradeCost[2]).map(([r,v]) => `${v}${RESOURCES.find(x=>x.id===r)?.icon||r}`).join(' ')}
+                    </td>
+                    <td className="text-[10px] font-mono text-[#666]">
+                      {Object.entries(u.upgradeCost[3]).map(([r,v]) => `${v}${RESOURCES.find(x=>x.id===r)?.icon||r}`).join(' ')}
+                    </td>
+                    <td className="text-[10px] text-[#555]">
+                      {u.heroClassBonus
+                        ? `+10% ATK для ${HERO_LIST.find(h=>h.id===u.heroClassBonus)?.name}`
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
           <h3 className="wiki-h3">Бойова система</h3>
           <ul className="wiki-ul">
             <li><strong className="text-white">Формація</strong>: обери юнітів зі своєї армії у формацію (макс. залежить від рівня замку)</li>
@@ -503,6 +638,63 @@ export default function Wiki() {
           <Note>Осадний мех (🦾) отримує +50% ATK проти руїн — використовуй його для T3.</Note>
         </section>
 
+        {/* ════════ ТОРГІВЛЯ ════════ */}
+        <section id="wiki-trade">
+          <SectionHeader id="trade" label="Торгівля" icon="🔄" onView={setActiveSection} />
+          <p className="text-xs text-[#555] mb-4 font-mono">
+            Торгівля між гравцями однієї групи. Вкладка «Торгівля» у нижній навігації.
+          </p>
+
+          <h3 className="wiki-h3">Як торгувати</h3>
+          <ol className="wiki-ol">
+            <li>Перейди на сторінку <strong className="text-white">Торгівля</strong> (нижня навігація)</li>
+            <li>Вибери вкладку <strong className="text-[var(--neon)]">Надіслати</strong></li>
+            <li>Обери гравця зі своєї групи зі списку</li>
+            <li>Вкажи ресурс та кількість для відправки</li>
+            <li>Вкажи що хочеш отримати взамін (або залиш порожнім для дарунку)</li>
+            <li>Натисни <strong className="text-white">Надіслати запит</strong></li>
+          </ol>
+
+          <h3 className="wiki-h3">Статуси угоди</h3>
+          <div className="overflow-x-auto mb-4">
+            <table className="wiki-table">
+              <thead><tr><th>Статус</th><th>Дія</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td className="font-mono text-[#ffaa00]">pending</td>
+                  <td className="text-xs text-[#666]">Чекає на відповідь отримувача</td>
+                </tr>
+                <tr>
+                  <td className="font-mono text-[var(--neon)]">accepted</td>
+                  <td className="text-xs text-[#666]">Угода прийнята — ресурси переведені</td>
+                </tr>
+                <tr>
+                  <td className="font-mono text-[#ff4444]">rejected</td>
+                  <td className="text-xs text-[#666]">Угода відхилена — ресурси повернуті</td>
+                </tr>
+                <tr>
+                  <td className="font-mono text-[#555]">cancelled</td>
+                  <td className="text-xs text-[#666]">Відправник скасував пропозицію</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="wiki-h3">Бонуси торгівлі по класу</h3>
+          <div className="overflow-x-auto mb-4">
+            <table className="wiki-table">
+              <thead><tr><th>Клас</th><th>Бонус</th><th>Слоти торгівлі (замок 3/4/5)</th></tr></thead>
+              <tbody>
+                <tr><td>🗺️ Координатор</td><td className="text-[var(--neon)] text-xs">+15% до золота при торгівлі</td><td className="text-center font-mono text-xs">2 / 3 / 4</td></tr>
+                <tr><td>🛡️ Страж</td><td className="text-[#888] text-xs">Стандарт</td><td className="text-center font-mono text-xs">0 / 1 / 2</td></tr>
+                <tr><td>📋 Архіваріус</td><td className="text-[#888] text-xs">Стандарт</td><td className="text-center font-mono text-xs">0 / 1 / 1</td></tr>
+                <tr><td>🔍 Детектив</td><td className="text-[#888] text-xs">Стандарт</td><td className="text-center font-mono text-xs">0 / 1 / 1</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <Note>Координатор (🗺️) — найкращий клас для торгівлі. При замку 5 рівня отримує 4 активних торгових слоти одночасно.</Note>
+        </section>
+
         {/* ════════ ПРОГРЕС ════════ */}
         <section id="wiki-progression">
           <SectionHeader id="progression" label="Прогрес та нагороди" icon="📈" onView={setActiveSection} />
@@ -510,13 +702,14 @@ export default function Wiki() {
           <h3 className="wiki-h3">Рівні героя</h3>
           <div className="overflow-x-auto mb-6">
             <table className="wiki-table">
-              <thead><tr><th>Рівень</th><th>XP потрібно</th><th>Звання</th></tr></thead>
+              <thead><tr><th>Рівень</th><th>XP від</th><th>Звання</th><th>Що відкриває</th></tr></thead>
               <tbody>
                 {XP_LEVELS.map(l => (
                   <tr key={l.level}>
                     <td className="text-center font-mono text-[var(--gold)] font-bold">{l.level}</td>
-                    <td className="text-center font-mono text-[#555]">{l.xpNeeded}+</td>
-                    <td className="text-[#888] text-sm">{l.title}</td>
+                    <td className="text-center font-mono text-[#555]">{l.xpNeeded}</td>
+                    <td className="text-white text-sm">{l.title}</td>
+                    <td className="text-[#555] text-xs">{l.heroClass}</td>
                   </tr>
                 ))}
               </tbody>
@@ -591,6 +784,16 @@ export default function Wiki() {
     stats: h.statBonus,
   })),
   cityBuildings: CITY_BUILDINGS.map(b => ({ id: b.id, name: b.name, maxLevel: b.maxLevel, description: b.description })),
+  natureBuildings: NATURE_BUILDINGS.map(b => ({ id: b.id, name: b.name, unlockHeroLevel: b.unlockLevel, production: b.production })),
+  labBuildings: LAB_BUILDINGS_INFO.map(b => ({ id: b.id, name: b.name, purpose: b.purpose, effect: b.effect })),
+  castleArmyLimits: { 1: 3, 2: 5, 3: 8, 4: 12, 5: 15 },
+  castleUpgradeCosts: {
+    2: '500 gold + 200 stone',
+    3: '1200 gold + 500 stone + 50 crystals',
+    4: '3000 gold + 1000 stone + 200 crystals + 100 code',
+    5: '6000 gold + 2000 stone + 500 crystals + 500 bits + 300 code',
+  },
+  trading: { description: 'Peer-to-peer resource trading within same group. Coordinator class gets most trade slots.' },
   units: UNIT_LIST.map(u => ({ id: u.id, name: u.name, type: u.type, baseHP: u.baseHP, baseATK: u.baseATK, baseDEF: u.baseDEF, special: u.special })),
   worldMap: {
     totalFields: 31,
