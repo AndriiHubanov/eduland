@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import GameImage from './GameImage'
 import { unitImg } from '../config/assets'
-import { RESOURCE_ICONS } from '../store/gameStore'
+import { RESOURCE_ICONS, getHeroLevel } from '../store/gameStore'
 import { UNITS, UNIT_LEVEL_MULTIPLIER, getUnitStats, getTotalUnits } from '../firebase/unitService'
 import { CASTLE_MAX_UNITS } from '../firebase/castleService'
 import { Button, Card } from './UI'
@@ -30,6 +30,8 @@ export default function UnitsPanel({ player, onRecruit, onUpgrade, onSetFormatio
   const totalUnits   = getTotalUnits(player.units)
   const formation    = player.army?.formation || []
   const power        = player.army?.power || 0
+  const heroLevel    = getHeroLevel(player.xp || 0)
+  const canUseArmy   = heroLevel >= 2
 
   return (
     <Card className="p-0 overflow-hidden">
@@ -53,6 +55,12 @@ export default function UnitsPanel({ player, onRecruit, onUpgrade, onSetFormatio
         ))}
       </div>
 
+      {!canUseArmy && (
+        <div className="mx-3 mt-3 p-2 rounded-lg bg-[rgba(255,69,0,0.08)] border border-[rgba(255,69,0,0.2)] text-xs text-[var(--accent)] text-center font-mono">
+          🔒 Армія доступна з рівня 2 героя
+        </div>
+      )}
+
       <div className="p-3">
         {activeTab === 'units' && (
           <UnitsList
@@ -60,6 +68,7 @@ export default function UnitsPanel({ player, onRecruit, onUpgrade, onSetFormatio
             heroClass={heroClass}
             maxUnits={maxUnits}
             totalUnits={totalUnits}
+            canUseArmy={canUseArmy}
             selected={selected}
             onSelect={setSelected}
             onRecruit={onRecruit}
@@ -81,7 +90,7 @@ export default function UnitsPanel({ player, onRecruit, onUpgrade, onSetFormatio
 }
 
 // ─── Список юнітів ─────────────────────────────────────────────
-function UnitsList({ player, heroClass, maxUnits, totalUnits, selected, onSelect, onRecruit, onUpgrade }) {
+function UnitsList({ player, heroClass, maxUnits, totalUnits, canUseArmy, selected, onSelect, onRecruit, onUpgrade }) {
   return (
     <div className="flex flex-col gap-2">
       {Object.entries(UNITS).map(([unitId, unit]) => {
@@ -91,7 +100,7 @@ function UnitsList({ player, heroClass, maxUnits, totalUnits, selected, onSelect
         const stats      = getUnitStats(unitId, level, heroClass)
         const isSelected = selected === unitId
         const hasBonus   = unit.heroClassBonus === heroClass
-        const canRecruit = totalUnits < maxUnits
+        const canRecruit = canUseArmy && totalUnits < maxUnits
         const costAfford = Object.entries(unit.cost).every(
           ([res, amt]) => (player.resources?.[res] || 0) >= amt
         )
@@ -178,7 +187,7 @@ function UnitsList({ player, heroClass, maxUnits, totalUnits, selected, onSelect
                     disabled={!canRecruit || !costAfford}
                     onClick={() => onRecruit(unitId)}
                   >
-                    {!canRecruit ? `Ліміт ${maxUnits}` : '+ НАЙНЯТИ'}
+                    {!canUseArmy ? '🔒 Рів.2' : !canRecruit ? `Ліміт ${maxUnits}` : '+ НАЙНЯТИ'}
                   </Button>
 
                   {/* Апгрейд */}
