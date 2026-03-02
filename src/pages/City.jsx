@@ -10,7 +10,7 @@ import {
 } from '../firebase/service'
 import { upgradeCastle, getCastleName, CASTLE_UPGRADE_LORE } from '../firebase/castleService'
 import { recruitUnit, upgradeUnit, setFormation } from '../firebase/unitService'
-import { LAB_BUILDINGS } from '../config/labs'
+import { LAB_BUILDINGS, formatCountdown } from '../config/labs'
 import {
   subscribePlayerMissions, initPlayerMissions, updateMissionProgress, claimMissionReward,
 } from '../firebase/missionService'
@@ -961,7 +961,14 @@ function CityTab({
 
 // ─── Панель Лабораторій ───────────────────────────────────────
 function LabsPanel({ player, onLabUpgrade }) {
+  const bq = player?.buildQueue
+  const bqEndsAtMs = bq?.endsAt
+    ? (bq.endsAt?.toDate ? bq.endsAt.toDate().getTime() : Number(bq.endsAt))
+    : 0
+  const bqActive = bqEndsAtMs > Date.now()
+
   return (
+    <div className="flex flex-col gap-3">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {Object.values(LAB_BUILDINGS).map(lab => {
         const currentLevel = player?.buildings?.[lab.id]?.level || 0
@@ -1056,6 +1063,61 @@ function LabsPanel({ player, onLabUpgrade }) {
           </div>
         )
       })}
+    </div>
+
+      {/* Активна черга будівництва */}
+      {bqActive && (
+        <BuildQueueSlot
+          buildingId={bq.buildingId}
+          targetLevel={bq.targetLevel}
+          endsAtMs={bqEndsAtMs}
+        />
+      )}
+
+      {/* Другий слот будівництва (заблокований) */}
+      <div className="opacity-35 flex items-center gap-2 p-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg2)]">
+        <span className="text-base">🔒</span>
+        <span className="text-xs text-[#444] font-mono">Другий слот будівництва</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Слот черги будівництва ───────────────────────────────────
+function BuildQueueSlot({ buildingId, targetLevel, endsAtMs }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const lab      = Object.values(LAB_BUILDINGS).find(l => l.id === buildingId)
+  const name     = lab?.name || buildingId
+  const icon     = lab?.icon || '🔧'
+  const total    = endsAtMs - (endsAtMs - (endsAtMs - now < 0 ? endsAtMs : endsAtMs))
+  const remaining = Math.max(0, endsAtMs - now)
+  const progress  = Math.min(100, 100 - (remaining / Math.max(1, endsAtMs - (endsAtMs - remaining))) * 100)
+
+  // Simplify: we don't know the start time, so just animate based on remaining
+  const pct = remaining <= 0 ? 100 : Math.min(100, Math.max(5, 100 - (remaining / 3600000) * 100))
+
+  return (
+    <div className="rounded-xl border border-[var(--accent)] bg-[var(--bg2)] p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{icon}</span>
+          <div>
+            <div className="text-sm font-semibold text-white">{name}</div>
+            <div className="text-[10px] font-mono text-[var(--accent)]">→ рів.{targetLevel}</div>
+          </div>
+        </div>
+        <div className="text-xs font-mono text-[#555]">
+          {remaining > 0 ? formatCountdown(remaining) : 'Готово!'}
+        </div>
+      </div>
+      <div className="w-full h-1.5 rounded-full bg-[var(--bg3)] overflow-hidden">
+        <div className="bar-fill-accent h-full rounded-full" style={{ width: `${pct}%` }} />
+      </div>
     </div>
   )
 }

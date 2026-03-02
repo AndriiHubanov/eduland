@@ -388,6 +388,26 @@ export default function WorldMap() {
             {fields.map(field => {
               const pos = FIELD_POSITIONS[field.index]
               if (!pos) return null
+              const fogStatus = (player?.fogState || {})[field.index]
+              const isHidden  = !fogStatus || fogStatus === 'hidden'
+              const isScanning = fogStatus === 'scanning'
+
+              if (isHidden || isScanning) {
+                return (
+                  <HiddenFieldMarker
+                    key={field.id}
+                    x={pos[0]}
+                    y={pos[1]}
+                    isScanning={isScanning}
+                    myExp={isScanning ? getMyExpForField(field.id) : null}
+                    tick={tick}
+                    visible={isFieldVisible(field)}
+                    onScout={() => handleStartExp(field.id, 'scout')}
+                    disabled={!!action}
+                  />
+                )
+              }
+
               return (
                 <FieldMarker
                   key={field.id}
@@ -564,6 +584,49 @@ function FieldMarker({ field, x, y, myExp, otherExp, tick, visible, onClick }) {
         <div className="absolute inset-0 flex items-center justify-center rounded-full">
           <span className="text-[8px] font-mono text-[#333]">✕</span>
         </div>
+      )}
+    </button>
+  )
+}
+
+// ─── Маркер прихованого поля (Fog of War) ─────────────────────
+function HiddenFieldMarker({ x, y, isScanning, myExp, tick, visible, onScout, disabled }) {
+  const SIZE = 56
+
+  let scanCountdown = null
+  if (isScanning && myExp?.status === 'active') {
+    const endsAt = myExp.endsAt?.toDate ? myExp.endsAt.toDate() : new Date(myExp.endsAt)
+    scanCountdown = formatCountdown(endsAt - Date.now())
+  }
+
+  return (
+    <button
+      onClick={!isScanning ? onScout : undefined}
+      disabled={disabled || isScanning}
+      className="absolute flex flex-col items-center justify-center rounded-full border transition-all duration-150 active:scale-90 field-fog"
+      style={{
+        left: x - SIZE / 2,
+        top:  y - SIZE / 2,
+        width:  SIZE,
+        height: SIZE,
+        borderColor: isScanning ? 'rgba(255,170,0,0.5)' : 'rgba(0,255,136,0.2)',
+        borderWidth: 1.5,
+        opacity: visible ? 1 : 0.15,
+        zIndex: 5,
+      }}
+    >
+      {isScanning ? (
+        <>
+          <span className="text-[9px] font-mono text-[rgba(255,170,0,0.7)]">🔭</span>
+          {scanCountdown && (
+            <span className="text-[6px] font-mono text-[rgba(255,170,0,0.6)] whitespace-nowrap mt-0.5">{scanCountdown}</span>
+          )}
+        </>
+      ) : (
+        <>
+          <span className="text-base leading-none" style={{ color: 'rgba(0,255,136,0.45)' }}>?</span>
+          <span className="text-[6px] font-mono text-[rgba(0,255,136,0.3)] whitespace-nowrap">сканувати</span>
+        </>
       )}
     </button>
   )

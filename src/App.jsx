@@ -20,6 +20,7 @@ const Trade     = lazy(() => import('./pages/Trade'))
 const Admin     = lazy(() => import('./pages/Admin'))
 const SurveyPage = lazy(() => import('./pages/SurveyPage'))
 const Wiki       = lazy(() => import('./pages/Wiki'))
+const Equipment  = lazy(() => import('./pages/Equipment'))
 
 // ErrorBoundary — ловить помилки рендеру замість чорного екрану
 class ErrorBoundary extends React.Component {
@@ -108,7 +109,8 @@ export default function App() {
             <Route path="/tasks"   element={<PrivateRoute><Tasks /></PrivateRoute>} />
             <Route path="/inbox"   element={<PrivateRoute><Inbox /></PrivateRoute>} />
             <Route path="/trade"   element={<PrivateRoute><Trade /></PrivateRoute>} />
-            <Route path="/surveys" element={<PrivateRoute><SurveyPage /></PrivateRoute>} />
+            <Route path="/surveys"   element={<PrivateRoute><SurveyPage /></PrivateRoute>} />
+            <Route path="/equipment" element={<PrivateRoute><Equipment /></PrivateRoute>} />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
