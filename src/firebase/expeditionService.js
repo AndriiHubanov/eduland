@@ -8,6 +8,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db } from './config'
+import { rollEquipmentLoot } from './equipmentService'
 import { calcFieldYield } from '../config/fields'
 import { getExpeditionTime, getExtractionBonus } from '../config/labs'
 import { simulateBattle, saveBattleResult, applyCasualties } from './battleService'
@@ -134,11 +135,19 @@ export async function startExpedition(playerId, fieldId, type) {
     await updateDoc(doc(db, 'fields', fieldId), { lastOccupiedBy: playerId })
   }
 
+  // Fog of War: помічаємо поле як "сканується" при розвідці
+  if (type === 'scout' && field.index !== undefined) {
+    await updateDoc(doc(db, 'players', playerId), {
+      [`fogState.${field.index}`]: 'scanning',
+    })
+  }
+
   // Зберігаємо місію
   const ref = await addDoc(collection(db, 'expeditions'), {
     playerId,
     group:     player.group,
     fieldId,
+    fieldIndex: field.index ?? null,   // для fog state update
     fieldType: field.type,
     fieldTier: field.tier || 1,
     type,
@@ -291,7 +300,45 @@ export async function claimExpedition(playerId, expeditionId) {
     tx.update(expRef, { status: 'claimed' })
   })
 
+  // Лут-рол + Fog of War reveal (поза транзакцією)
+  try {
+    const playerSnap2 = await getDoc(doc(db, 'players', playerId))
+    const playerData2 = playerSnap2.data() || {}
+
+    // Лут-рол (20%)
+    const ownedItems = playerData2.inventory?.items || []
+    const lootItem   = await rollEquipmentLoot(playerId, ownedItems)
+    if (lootItem) claimed.lootItem = lootItem
+
+    // Fog of War: відкриваємо поле
+    const expRef2  = await getDoc(doc(db, 'expeditions', expeditionId))
+    const expData  = expRef2.data() || {}
+    const fidx     = expData.fieldIndex
+    if (fidx !== null && fidx !== undefined) {
+      const fogUpdate = { [`fogState.${fidx}`]: 'revealed' }
+      if (expData.fieldType === 'neutral') {
+        fogUpdate[`fieldDiscoveries.${fidx}`] = rollNeutralDiscovery()
+      }
+      await updateDoc(doc(db, 'players', playerId), fogUpdate)
+    }
+  } catch {}
+
   return claimed
+}
+
+// ─── Допоміжна: генерація відкриття нейтрального поля ────────
+function rollNeutralDiscovery() {
+  const r = Math.random()
+  if (r < 0.40) {
+    return { result: 'empty' }
+  } else if (r < 0.80) {
+    const resourceTypes = ['gold', 'bits', 'code', 'bio', 'energy', 'crystals']
+    return { result: 'resource', resourceType: resourceTypes[Math.floor(Math.random() * resourceTypes.length)] }
+  } else {
+    const tierRoll = Math.random()
+    const ruinTier = tierRoll < 0.50 ? 1 : tierRoll < 0.85 ? 2 : 3
+    return { result: 'ruin', ruinTier }
+  }
 }
 
 // ─── Форс-рефреш поля через Сигнальну вежу ──────────────────

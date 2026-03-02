@@ -417,6 +417,18 @@ export function subscribePendingPlayers(callback) {
   })
 }
 
+// Fog of War: скидаємо туман для всіх гравців групи (одноразова міграція)
+export async function resetFogForAllPlayers(group) {
+  const q    = query(collection(db, 'players'), where('group', '==', group))
+  const snap = await getDocs(q)
+  const batch = writeBatch(db)
+  snap.docs.forEach(d => {
+    batch.update(d.ref, { fogState: {}, fieldDiscoveries: {} })
+  })
+  await batch.commit()
+  return snap.size
+}
+
 // Всі гравці групи (для карти і торгівлі)
 export function subscribeGroupPlayers(group, callback) {
   const q = query(

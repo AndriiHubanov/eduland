@@ -181,6 +181,16 @@ body {
 }
 
 /* ─── Анімації ─── */
+@keyframes energy-flow {
+  0%   { background-position: -250% center; }
+  100% { background-position: 250% center; }
+}
+@keyframes static-noise {
+  0%, 100% { opacity: 0.85; }
+  25%       { opacity: 0.70; }
+  50%       { opacity: 0.92; }
+  75%       { opacity: 0.65; }
+}
 @keyframes pulse-accent {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -199,6 +209,37 @@ body {
 }
 .animate-flicker {
   animation: flicker 3s ease-in-out infinite;
+}
+
+/* ─── Прогрес-бари з ефектом енергетичного потоку ─── */
+.bar-fill {
+  background: linear-gradient(90deg,
+    #003322 0%, var(--neon) 40%, #00ffcc 55%, #003322 100%
+  );
+  background-size: 250% 100%;
+  animation: energy-flow 2s linear infinite;
+}
+.bar-fill-accent {
+  background: linear-gradient(90deg,
+    #220800 0%, var(--accent) 40%, #ff6622 55%, #220800 100%
+  );
+  background-size: 250% 100%;
+  animation: energy-flow 1.8s linear infinite;
+}
+.bar-fill-gold {
+  background: linear-gradient(90deg,
+    #221500 0%, var(--gold) 40%, #ffe566 55%, #221500 100%
+  );
+  background-size: 250% 100%;
+  animation: energy-flow 2.2s linear infinite;
+}
+
+/* ─── Туман війни (Fog of War) ─── */
+.field-fog {
+  background: repeating-conic-gradient(
+    rgba(0,255,136,0.04) 0%, rgba(0,0,0,0.92) 25%
+  );
+  animation: static-noise 0.15s steps(4) infinite;
 }
 
 /* ─── XP Бар ─── */

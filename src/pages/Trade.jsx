@@ -1,6 +1,6 @@
 // ─── Trade Page (/trade): Торгівля ───
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useGameStore, { RESOURCE_ICONS } from '../store/gameStore'
 import {
@@ -8,8 +8,13 @@ import {
   sendTradeRequest, acceptTrade, rejectTrade, cancelTrade
 } from '../firebase/service'
 import {
+  subscribeExchangeRates, refreshRatesIfExpired,
+  buyResource, sellResource,
+} from '../firebase/exchangeService'
+import {
   Spinner, Card, Button, Tabs, EmptyState, ErrorMsg, SuccessMsg, ResourceBadge, Modal, BottomNav
 } from '../components/UI'
+import { useHaptic } from '../hooks/useHaptic'
 
 const NAV_ITEMS = [
   { id: 'city',   icon: '🏙️', label: 'Місто'   },
@@ -52,9 +57,10 @@ export default function Trade() {
   if (loading) return <Spinner text="Завантаження торгівлі..." />
 
   const tabs = [
-    { id: 'send',    label: 'Надіслати' },
+    { id: 'send',     label: 'Надіслати' },
     { id: 'incoming', label: `Вхідні${incoming.length > 0 ? ` (${incoming.length})` : ''}` },
     { id: 'outgoing', label: 'Мої запити' },
+    { id: 'exchange', label: '📈 Біржа' },
   ]
 
   return (
@@ -76,6 +82,9 @@ export default function Trade() {
         )}
         {activeTab === 'outgoing' && (
           <OutgoingTab trades={outgoing} />
+        )}
+        {activeTab === 'exchange' && (
+          <ExchangeTab player={player} />
         )}
       </main>
 
@@ -336,6 +345,202 @@ function IncomingTab({ trades }) {
           </Card>
         )
       })}
+    </div>
+  )
+}
+
+// ─── Біржа ресурсів ───────────────────────────────────────────
+const EXCHANGE_RESOURCES = ['wood', 'stone', 'crystals', 'bits', 'code', 'bio', 'energy']
+
+function ExchangeTab({ player }) {
+  const [rates, setRates]         = useState(null)
+  const [prevRates, setPrevRates] = useState(null)
+  const [subMode, setSubMode]     = useState('buy')   // 'buy' | 'sell'
+  const [amounts, setAmounts]     = useState({})       // resource -> input value
+  const [loading, setLoading]     = useState(true)
+  const [processing, setProcessing] = useState(null)
+  const [error, setError]         = useState('')
+  const [success, setSuccess]     = useState('')
+  const [countdown, setCountdown] = useState('')
+  const { click, success: hapticOk, error: hapticErr, trade: hapticTrade } = useHaptic()
+
+  useEffect(() => {
+    // Оновлюємо ставки якщо час вийшов
+    refreshRatesIfExpired(player.group).catch(() => {})
+
+    const unsub = subscribeExchangeRates(player.group, (data) => {
+      setRates(prev => {
+        if (prev) setPrevRates(prev.rates)
+        return data
+      })
+      setLoading(false)
+    })
+    return () => unsub()
+  }, [player.group])
+
+  // Countdown таймер до наступного оновлення
+  useEffect(() => {
+    if (!rates?.nextUpdateAt) return
+    const tick = () => {
+      const nextMs = typeof rates.nextUpdateAt === 'number'
+        ? rates.nextUpdateAt
+        : rates.nextUpdateAt?.toMillis?.() ?? 0
+      const diff = nextMs - Date.now()
+      if (diff <= 0) { setCountdown('оновлення...'); return }
+      const m = Math.floor(diff / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setCountdown(`${m}хв ${s.toString().padStart(2,'0')}с`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [rates?.nextUpdateAt])
+
+  async function handleBuy(resource) {
+    const goldAmount = parseInt(amounts[resource] || 0)
+    if (!goldAmount || goldAmount <= 0) { setError('Введіть кількість золота'); return }
+    setProcessing(resource); setError(''); setSuccess('')
+    click()
+    try {
+      const gained = await buyResource(player.id, player.group, resource, goldAmount)
+      hapticOk()
+      setSuccess(`+${gained} ${RESOURCE_ICONS[resource]?.icon} ${RESOURCE_ICONS[resource]?.name}`)
+      setAmounts(a => ({ ...a, [resource]: '' }))
+    } catch (err) {
+      hapticErr()
+      setError(err.message || 'Помилка купівлі')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  async function handleSell(resource) {
+    const resAmount = parseInt(amounts[resource] || 0)
+    if (!resAmount || resAmount <= 0) { setError('Введіть кількість ресурсу'); return }
+    setProcessing(resource); setError(''); setSuccess('')
+    click()
+    try {
+      const gained = await sellResource(player.id, player.group, resource, resAmount)
+      hapticOk()
+      setSuccess(`+${gained} 🪙 Золото`)
+      setAmounts(a => ({ ...a, [resource]: '' }))
+    } catch (err) {
+      hapticErr()
+      setError(err.message || 'Помилка продажу')
+    } finally {
+      setProcessing(null)
+    }
+  }
+
+  if (loading) return <Spinner text="Завантаження ринку..." />
+  if (!rates)  return <EmptyState icon="📈" text="Ринок недоступний" />
+
+  const rateMap = rates.rates || {}
+
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      {/* Заголовок + таймер */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-[#555] uppercase tracking-wider">Динамічний ринок</p>
+          <p className="text-[10px] text-[#444] font-mono mt-0.5">оновлення через {countdown}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setSubMode('buy')}
+            className={`px-3 py-1.5 rounded text-xs font-semibold transition-all border ${
+              subMode === 'buy'
+                ? 'bg-[rgba(0,255,136,0.1)] border-[var(--neon)] text-[var(--neon)]'
+                : 'border-[var(--border)] text-[#555]'
+            }`}
+          >
+            Купити
+          </button>
+          <button
+            onClick={() => setSubMode('sell')}
+            className={`px-3 py-1.5 rounded text-xs font-semibold transition-all border ${
+              subMode === 'sell'
+                ? 'bg-[rgba(255,69,0,0.1)] border-[var(--accent)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[#555]'
+            }`}
+          >
+            Продати
+          </button>
+        </div>
+      </div>
+
+      {error   && <ErrorMsg text={error} />}
+      {success && <SuccessMsg text={success} />}
+
+      {/* Список ресурсів */}
+      <div className="flex flex-col gap-2">
+        {EXCHANGE_RESOURCES.map(res => {
+          const info    = RESOURCE_ICONS[res] || {}
+          const rate    = rateMap[res] || 1
+          const prev    = prevRates?.[res]
+          const change  = prev ? ((rate - prev) / prev * 100).toFixed(1) : null
+          const owned   = player.resources?.[res] || 0
+          const goldOwn = player.resources?.gold || 0
+          const amt     = amounts[res] || ''
+          const preview = subMode === 'buy'
+            ? (amt ? `≈ ${Math.floor(parseInt(amt) * rate)} ${info.icon}` : '')
+            : (amt ? `≈ ${Math.floor(parseInt(amt) / rate)} 🪙` : '')
+          const isProc  = processing === res
+
+          return (
+            <Card key={res} className={`${isProc ? 'opacity-60 pointer-events-none' : ''}`}>
+              <div className="flex items-center gap-3">
+                {/* Іконка + назва */}
+                <div className="w-10 h-10 flex items-center justify-center rounded-lg bg-[var(--bg3)] text-2xl shrink-0">
+                  {info.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm text-white">{info.name}</span>
+                    {change !== null && (
+                      <span className={`text-[10px] font-mono font-bold ${
+                        parseFloat(change) >= 0 ? 'text-[var(--neon)]' : 'text-[var(--accent)]'
+                      }`}>
+                        {parseFloat(change) >= 0 ? '▲' : '▼'}{Math.abs(change)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-[#555] font-mono">
+                    {subMode === 'buy'
+                      ? `1 🪙 = ${rate} ${info.icon}`
+                      : `${rate} ${info.icon} = 1 🪙`
+                    }
+                    {' · '}
+                    <span>{subMode === 'buy' ? `маю: ${goldOwn} 🪙` : `маю: ${owned} ${info.icon}`}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-3">
+                <input
+                  type="number"
+                  className="input flex-1 text-sm py-1.5"
+                  placeholder={subMode === 'buy' ? 'Золото...' : `${info.name}...`}
+                  value={amt}
+                  min="1"
+                  onChange={e => setAmounts(a => ({ ...a, [res]: e.target.value }))}
+                />
+                <Button
+                  variant={subMode === 'buy' ? 'neon' : 'accent'}
+                  className="text-xs px-3 py-1.5 shrink-0"
+                  disabled={isProc || !amt}
+                  onClick={() => subMode === 'buy' ? handleBuy(res) : handleSell(res)}
+                >
+                  {subMode === 'buy' ? 'Купити' : 'Продати'}
+                </Button>
+              </div>
+              {preview && (
+                <p className="text-[10px] text-[#555] font-mono mt-1">{preview}</p>
+              )}
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }

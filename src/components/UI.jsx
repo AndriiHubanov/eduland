@@ -90,7 +90,7 @@ export function XPBar({ progress, current, needed, level }) {
         <span className="font-mono">{current}/{needed} XP</span>
       </div>
       <div className="xp-bar">
-        <div className="xp-bar-fill" style={{ width: `${progress}%` }} />
+        <div className="xp-bar-fill bar-fill" style={{ width: `${progress}%` }} />
       </div>
     </div>
   )

@@ -52,6 +52,16 @@ export default {
           '0%':   { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0'  },
         },
+        'energy-flow': {
+          '0%':   { backgroundPosition: '-250% center' },
+          '100%': { backgroundPosition: '250% center'  },
+        },
+        'static-noise': {
+          '0%, 100%': { opacity: '0.85' },
+          '25%':      { opacity: '0.70' },
+          '50%':      { opacity: '0.92' },
+          '75%':      { opacity: '0.65' },
+        },
       },
       animation: {
         'slide-up':    'slide-up 0.22s ease-out',
@@ -60,7 +70,9 @@ export default {
         'neon-pulse':  'neon-pulse 2s ease-in-out infinite',
         'float-up':    'float-up 0.9s ease-out forwards',
         'fade-in':     'fade-in 0.25s ease-out',
-        'shimmer':     'shimmer 2s linear infinite',
+        'shimmer':      'shimmer 2s linear infinite',
+        'energy-flow':  'energy-flow 2s linear infinite',
+        'static-noise': 'static-noise 0.15s steps(4) infinite',
       },
     },
   },

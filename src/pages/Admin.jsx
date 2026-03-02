@@ -7,6 +7,7 @@ import {
   createTask, deactivateTask, subscribeAllActiveTasks, getAllTasks,
   sendAdminMessage, addDiscipline, addBuilding,
   subscribePendingPlayers, approvePlayer, rejectPlayer,
+  resetFogForAllPlayers,
 } from '../firebase/service'
 import {
   Button, Card, Input, Tabs, Spinner, EmptyState,
@@ -76,6 +77,7 @@ export default function Admin() {
     { id: 'disciplines', label: 'Дисципліни' },
     { id: 'buildings',   label: 'Будівлі' },
     { id: 'mail',        label: 'Пошта' },
+    { id: 'devtools',    label: '🛠 DevTools' },
   ]
 
   return (
@@ -111,6 +113,7 @@ export default function Admin() {
         {activeTab === 'disciplines' && <DisciplinesTab />}
         {activeTab === 'buildings'   && <BuildingsTab />}
         {activeTab === 'mail'        && <MailTab />}
+        {activeTab === 'devtools'    && <DevToolsTab />}
       </main>
     </div>
   )
@@ -1577,6 +1580,58 @@ function SurveysTab() {
           </Card>
         ))
       )}
+    </div>
+  )
+}
+
+// ─── DevTools Tab ─────────────────────────────────────────────────────────────
+
+function DevToolsTab() {
+  const [group, setGroup]     = useState(GROUP_KEYS[0] || '')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult]   = useState('')
+  const [error, setError]     = useState('')
+
+  async function handleResetFog() {
+    if (!window.confirm(`Скинути туман для групи ${group}? Це оновить fogState всіх гравців.`)) return
+    setLoading(true); setError(''); setResult('')
+    try {
+      const count = await resetFogForAllPlayers(group)
+      setResult(`✅ Туман скинуто для ${count} гравців групи ${group}`)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4 py-3">
+      <p className="text-xs text-[var(--accent)] uppercase tracking-widest font-semibold">⚠️ Інструменти розробника</p>
+
+      <Card>
+        <p className="text-sm font-semibold text-white mb-1">🌫 Fog of War — скидання туману</p>
+        <p className="text-xs text-[#555] mb-3 leading-relaxed">
+          Скидає <code>fogState</code> та <code>fieldDiscoveries</code> для всіх гравців обраної групи.
+          Після скидання всі поля стануть «прихованими» — гравці мають заново розвідувати карту.
+        </p>
+        <div className="flex gap-2">
+          <select
+            className="input flex-1 text-sm"
+            value={group}
+            onChange={e => setGroup(e.target.value)}
+          >
+            {GROUP_KEYS.map(g => (
+              <option key={g} value={g}>{GROUPS_CONFIG[g]?.label || g}</option>
+            ))}
+          </select>
+          <Button variant="accent" disabled={loading} onClick={handleResetFog}>
+            {loading ? 'Скидаю...' : 'Скинути туман'}
+          </Button>
+        </div>
+        {result && <p className="text-xs text-[var(--neon)] mt-2">{result}</p>}
+        {error  && <ErrorMsg text={error} />}
+      </Card>
     </div>
   )
 }
