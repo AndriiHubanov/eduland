@@ -184,6 +184,12 @@ function MissionCard({ mission, onClaim }) {
 
           <p className="text-xs text-[#666] mb-2 leading-relaxed">{mission.description}</p>
 
+          {mission.flavorText && !isClaimed && (
+            <p className="text-[10px] text-[#444] italic mb-2 border-l-2 border-[var(--border)] pl-2 leading-relaxed">
+              {mission.flavorText}
+            </p>
+          )}
+
           {/* Прогрес-бар */}
           {!isClaimed && (
             <div className="mb-2">

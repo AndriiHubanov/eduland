@@ -8,7 +8,7 @@ import {
   ensureResourceMap, startResearch, revealCell, buildMine, collectMine, upgradeMine,
   placeBuildingOnGrid, removeBuildingFromGrid,
 } from '../firebase/service'
-import { upgradeCastle } from '../firebase/castleService'
+import { upgradeCastle, getCastleName, CASTLE_UPGRADE_LORE } from '../firebase/castleService'
 import { recruitUnit, upgradeUnit, setFormation } from '../firebase/unitService'
 import { LAB_BUILDINGS } from '../config/labs'
 import {
@@ -67,6 +67,7 @@ export default function City() {
   const [levelUp, setLevelUp]       = useState(null)
   const [missions, setMissions]     = useState([])
   const [showMissions, setShowMissions] = useState(false)
+  const [loreFeedback, setLoreFeedback] = useState(null) // { castleName, text }
 
   // ─── Таби та collapsible ────────────────────────────────────
   const [activeTab, setActiveTab]     = useState('city')
@@ -422,10 +423,14 @@ export default function City() {
   // ─── Замок ──────────────────────────────────────────────────
   async function handleCastleUpgrade() {
     try {
-      const castleLevel = (player.castleLevel || 0) + 1
+      const currentLevel = player.castle?.level || 1
       await upgradeCastle(player.id)
-      showFeedback('success', 'Замок покращено!')
-      updateMissionProgress(player.id, 'upgrade_castle', { level: castleLevel }).catch(console.error)
+      const newLevel = currentLevel + 1
+      const castleName = getCastleName(player.heroClass, newLevel)
+      const loreText = CASTLE_UPGRADE_LORE[player.heroClass]?.[newLevel]
+      showFeedback('success', `Замок → ${castleName} ✓`)
+      if (loreText) setLoreFeedback({ castleName, text: loreText })
+      updateMissionProgress(player.id, 'upgrade_castle', { level: newLevel }).catch(console.error)
     } catch (err) {
       showFeedback('error', err.message)
     }
@@ -654,6 +659,35 @@ export default function City() {
           heroName={player.heroName}
           onClose={() => setLevelUp(null)}
         />
+      )}
+
+      {/* ─── Lore popup (castle upgrade) ─── */}
+      {loreFeedback && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+          onClick={() => setLoreFeedback(null)}
+        >
+          <div
+            className="max-w-sm w-full bg-[var(--card)] border border-[rgba(255,215,0,0.3)] rounded-2xl p-6 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-[10px] font-mono text-[var(--gold)] tracking-widest uppercase mb-2">
+              // Повідомлення Nova Academy
+            </div>
+            <h3 className="font-bebas text-2xl tracking-widest text-[var(--gold)] mb-3">
+              {loreFeedback.castleName}
+            </h3>
+            <p className="text-sm text-[#888] leading-relaxed italic mb-5">
+              {loreFeedback.text}
+            </p>
+            <button
+              onClick={() => setLoreFeedback(null)}
+              className="w-full py-2 bg-[rgba(255,215,0,0.08)] border border-[rgba(255,215,0,0.3)] text-[var(--gold)] font-mono text-xs rounded-lg hover:bg-[rgba(255,215,0,0.18)] transition-colors"
+            >
+              [ ПРОДОВЖИТИ ]
+            </button>
+          </div>
+        </div>
       )}
 
       {showMissions && (
