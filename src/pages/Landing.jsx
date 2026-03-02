@@ -88,12 +88,26 @@ export default function Landing() {
         </div>
 
         {/* Лор */}
-        <div className="w-full text-center px-4">
-          <p className="text-sm italic text-[#555] leading-relaxed">
-            Після Великого Колапсу залишились руїни.<br />
-            Тільки знання можуть відродити світ.<br />
-            <span className="text-[#888]">Побудуй своє місто. Навчайся. Перемагай.</span>
-          </p>
+        <div className="w-full px-2">
+          <div className="border border-[rgba(255,69,0,0.15)] rounded-xl bg-[rgba(10,10,15,0.8)] p-4 text-xs text-[#555] leading-relaxed space-y-2">
+            <p className="text-[var(--neon)] font-mono tracking-wider text-[10px] uppercase">
+              // Журнал. 2047. День 2920 після Колапсу
+            </p>
+            <p>
+              У <span className="text-[#888]">2039</span> році електромагнітний каскад знищив більшість
+              цифрових мереж. Уряди впали за 72 години. Те, що залишилось від цивілізації, ховалось
+              у бункерах.
+            </p>
+            <p>
+              Сьогодні — <span className="text-[var(--gold)]">2047</span>. Перші паростки нового
+              світу. <span className="text-white font-semibold">Nova Academy</span> — острів знань
+              серед руїн. Тут навчають єдиній зброї, що вижила:{' '}
+              <span className="text-[var(--neon)]">розуму</span>.
+            </p>
+            <p className="text-[#444] italic border-t border-[var(--border)] pt-2">
+              «Твоє місто — не просто будівлі. Це маніфест того, що людство не здалося.»
+            </p>
+          </div>
         </div>
 
         {/* ─── Крок 1: Вибір групи ─── */}
