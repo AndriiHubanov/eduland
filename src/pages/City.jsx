@@ -1473,9 +1473,19 @@ function LevelUpModal({ level, heroClass, heroName, onClose }) {
           <p className="text-sm text-[#888] mt-1">{heroName}</p>
         </div>
 
-        <p className="text-xs text-[#555] font-mono leading-relaxed">
-          Ти досяг нового рівня.<br />Продовжуй навчатись та будувати своє місто.
-        </p>
+        {level === 2 ? (
+          <div className="flex flex-col items-center gap-2 text-center">
+            <p className="text-sm text-[var(--neon)] font-semibold">🔓 Армія розблокована!</p>
+            <p className="text-xs text-[#555] font-mono leading-relaxed">
+              Тепер ти можеш найняти юнітів і сформувати бойову армію.<br />
+              Nova Academy чекає на своїх захисників.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-[#555] font-mono leading-relaxed">
+            Ти досяг нового рівня.<br />Продовжуй навчатись та будувати своє місто.
+          </p>
+        )}
 
         <button
           onClick={onClose}

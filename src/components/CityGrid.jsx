@@ -159,7 +159,7 @@ export default function CityGrid({
                     gridRow:    `${row + 1} / ${row + 3}`,
                     background: isSelected
                       ? 'rgba(255,200,50,0.12)'
-                      : 'rgba(60,50,20,0.5)',
+                      : '#14120a',
                     border: `1.5px solid ${isSelected ? '#ffd700' : '#4a3a18'}`,
                     boxShadow: isSelected ? '0 0 16px rgba(255,215,0,0.4)' : '0 0 8px rgba(0,0,0,0.5)',
                   }}
@@ -186,8 +186,8 @@ export default function CityGrid({
                     background: isSelected
                       ? 'rgba(0,255,136,0.08)'
                       : isBuilt
-                        ? 'rgba(30,25,10,0.7)'
-                        : 'rgba(15,12,5,0.5)',
+                        ? '#0e0c07'
+                        : '#0a0804',
                     border: `1.5px solid ${
                       isSelected ? 'var(--neon)' : isBuilt ? '#3a3020' : '#22200e'
                     }`,
@@ -346,7 +346,7 @@ function BuildingDetailPanel({ buildingId, player, buildings, onClose, onUpgrade
               src={buildingImg('castle', level)}
               fallback="🏰"
               alt="Замок"
-              className="w-12 h-12 object-contain shrink-0"
+              className="w-20 h-20 object-contain shrink-0"
             />
             <div>
               <div className="font-bebas text-base tracking-widest text-[#ffd700]">ЗАМОК</div>
@@ -469,7 +469,7 @@ function BuildingDetailPanel({ buildingId, player, buildings, onClose, onUpgrade
                     key={i}
                     onClick={() => onWorkerToggle(buildingId, i < workers ? 'remove' : 'add')}
                     disabled={i >= workers && !canAdd}
-                    className={`w-9 h-9 rounded flex items-center justify-center text-base border transition-all active:scale-95 ${
+                    className={`w-12 h-12 rounded flex items-center justify-center text-base border transition-all active:scale-95 ${
                       i < workers
                         ? 'bg-[rgba(0,255,136,0.15)] border-[var(--neon)] text-[var(--neon)]'
                         : 'bg-[var(--bg3)] border-[var(--border)] text-[#333] disabled:opacity-30'
