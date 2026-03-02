@@ -91,7 +91,7 @@ export const NATURAL_BUILDINGS = {
 }
 
 // XP для рівнів
-export const XP_FOR_LEVEL = [0, 100, 250, 450, 700, 1000]
+export const XP_FOR_LEVEL = [0, 80, 200, 380, 620, 950]
 
 export function getHeroLevel(xp) {
   let level = 1

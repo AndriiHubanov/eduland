@@ -115,7 +115,7 @@ function UnitsList({ player, heroClass, maxUnits, totalUnits, canUseArmy, select
             {/* Картка юніта */}
             <button
               onClick={() => onSelect(isSelected ? null : unitId)}
-              className={`w-full text-left p-3 rounded-lg border transition-all ${
+              className={`w-full text-left p-4 rounded-lg border transition-all ${
                 isSelected
                   ? 'border-[var(--accent)] bg-[rgba(255,69,0,0.08)]'
                   : 'border-[var(--border)] bg-[var(--bg3)] hover:border-[#333]'
@@ -126,11 +126,11 @@ function UnitsList({ player, heroClass, maxUnits, totalUnits, canUseArmy, select
                   src={unitImg(unitId)}
                   fallback={unit.icon}
                   alt={unit.name}
-                  className="w-10 h-10 object-contain shrink-0 rounded"
+                  className="w-16 h-16 object-contain shrink-0 rounded"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-white truncate">{unit.name}</span>
+                    <span className="text-base font-semibold text-white truncate">{unit.name}</span>
                     {hasBonus && (
                       <span className="text-[10px] text-[var(--gold)] shrink-0">★ клас</span>
                     )}
@@ -151,7 +151,7 @@ function UnitsList({ player, heroClass, maxUnits, totalUnits, canUseArmy, select
                 </div>
                 {/* Стати */}
                 {stats && (
-                  <div className="text-right text-[10px] font-mono text-[#666] shrink-0">
+                  <div className="text-right text-xs font-mono text-[#666] shrink-0">
                     <div>❤️ {stats.hp}</div>
                     <div>⚔️ {stats.atk}</div>
                     <div>🛡 {stats.def}</div>
@@ -248,7 +248,7 @@ function ArmyTab({ player, heroClass, formation, power, onSetFormation }) {
       {/* Слоти формації */}
       <div>
         <p className="text-xs text-[#555] mb-2 uppercase tracking-wider">Формація (до 5 юнітів)</p>
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-5 gap-2">
           {Array.from({ length: 5 }).map((_, i) => {
             const unitId = localFormation[i]
             const unit   = unitId ? UNITS[unitId] : null
@@ -293,7 +293,7 @@ function ArmyTab({ player, heroClass, formation, power, onSetFormation }) {
                 <button
                   key={unitId}
                   onClick={() => toggleUnit(unitId)}
-                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-all ${
                     inFormation
                       ? 'border-[var(--accent)] bg-[rgba(255,69,0,0.12)] text-white'
                       : 'border-[var(--border)] bg-[var(--bg3)] text-[#888] hover:border-[#444]'
@@ -303,7 +303,7 @@ function ArmyTab({ player, heroClass, formation, power, onSetFormation }) {
                     src={unitImg(unitId)}
                     fallback={unit?.icon}
                     alt={unit?.name}
-                    className="w-5 h-5 object-contain shrink-0"
+                    className="w-8 h-8 object-contain shrink-0"
                   />
                   <span>{unit?.name}</span>
                   <span className="text-[10px] font-mono opacity-60">×{unitData.count} рів.{unitData.level}</span>
