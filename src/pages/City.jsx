@@ -22,6 +22,8 @@ import {
   ResourceBar, XPBar, Spinner, ErrorMsg, SuccessMsg, Button, Card, BottomNav,
   LoreBanner, ResourceBadge, EmptyState,
 } from '../components/UI'
+import GameImage       from '../components/GameImage'
+import { heroImg }    from '../config/assets'
 import BuildingCard    from '../components/BuildingCard'
 import CityGrid        from '../components/CityGrid'
 import MiningGrid      from '../components/MiningGrid'
@@ -502,7 +504,12 @@ export default function City() {
       <header className="sticky top-0 z-40 bg-[var(--bg2)] border-b border-[var(--border)] p-3">
         <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-xl">{heroClass.icon}</span>
+            <GameImage
+              src={heroImg(player.heroClass)}
+              fallback={heroClass.icon}
+              alt={heroClass.name}
+              className="w-10 h-10 object-contain rounded-lg border border-[var(--border)] shrink-0"
+            />
             <div>
               <div className="font-semibold text-white text-sm leading-tight">{player.heroName}</div>
               <div className="text-[11px] text-[#666]">{heroClass.name} · Рів.{xpProgress.level} · {player.group}</div>
@@ -791,7 +798,18 @@ function CityTab({
       {/* ─── ГЕРОЙ ─── */}
       <CollapsibleSection id="hero" title="ГЕРОЙ" open={openSections.has('hero')} onToggle={toggleSection}>
         <Card>
-          <XPBar {...xpProgress} />
+          <div className="flex items-center gap-3 mb-3">
+            <GameImage
+              src={heroImg(player.heroClass)}
+              fallback={heroClass.icon}
+              alt={heroClass.name}
+              className="w-16 h-20 object-contain rounded-lg border border-[var(--border)] shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="font-bebas text-base tracking-wider text-white mb-1">{player.heroName}</div>
+              <XPBar {...xpProgress} />
+            </div>
+          </div>
           <div className="grid grid-cols-4 gap-2 mt-3">
             {[
               { label: 'Інтелект',     value: player.heroStats?.intellect  || 5, icon: '🧠' },

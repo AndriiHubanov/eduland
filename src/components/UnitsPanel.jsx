@@ -2,6 +2,8 @@
 // Найм, апгрейд юнітів + формування армії (5 слотів)
 
 import { useState } from 'react'
+import GameImage from './GameImage'
+import { unitImg } from '../config/assets'
 import { RESOURCE_ICONS } from '../store/gameStore'
 import { UNITS, UNIT_LEVEL_MULTIPLIER, getUnitStats, getTotalUnits } from '../firebase/unitService'
 import { CASTLE_MAX_UNITS } from '../firebase/castleService'
@@ -111,7 +113,12 @@ function UnitsList({ player, heroClass, maxUnits, totalUnits, selected, onSelect
               }`}
             >
               <div className="flex items-center gap-2">
-                <span className="text-2xl">{unit.icon}</span>
+                <GameImage
+                  src={unitImg(unitId)}
+                  fallback={unit.icon}
+                  alt={unit.name}
+                  className="w-10 h-10 object-contain shrink-0 rounded"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-semibold text-white truncate">{unit.name}</span>
@@ -246,8 +253,13 @@ function ArmyTab({ player, heroClass, formation, power, onSetFormation }) {
                 }`}
               >
                 {unit ? (
-                  <button onClick={() => toggleUnit(unitId)} className="w-full h-full flex items-center justify-center">
-                    {unit.icon}
+                  <button onClick={() => toggleUnit(unitId)} className="w-full h-full flex items-center justify-center p-1">
+                    <GameImage
+                      src={unitImg(unitId)}
+                      fallback={unit.icon}
+                      alt={unit.name}
+                      className="w-full h-full object-contain"
+                    />
                   </button>
                 ) : (
                   <span className="text-[#333] text-sm">+</span>
@@ -278,7 +290,12 @@ function ArmyTab({ player, heroClass, formation, power, onSetFormation }) {
                       : 'border-[var(--border)] bg-[var(--bg3)] text-[#888] hover:border-[#444]'
                   }`}
                 >
-                  <span className="text-base">{unit?.icon}</span>
+                  <GameImage
+                    src={unitImg(unitId)}
+                    fallback={unit?.icon}
+                    alt={unit?.name}
+                    className="w-5 h-5 object-contain shrink-0"
+                  />
                   <span>{unit?.name}</span>
                   <span className="text-[10px] font-mono opacity-60">×{unitData.count} рів.{unitData.level}</span>
                 </button>

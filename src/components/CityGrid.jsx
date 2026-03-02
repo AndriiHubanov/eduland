@@ -255,24 +255,26 @@ export default function CityGrid({
 function CastleTile({ level, active }) {
   const CASTLE_NAMES = ['', 'Бункер', 'Опорпункт', 'Цитадель', 'Твердиня', 'Фортеця-Нова']
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-0.5 p-1">
+    <div className="relative h-full">
       <GameImage
         src={buildingImg('castle', level)}
         fallback="🏰"
         alt={`Замок рів.${level}`}
-        className="w-full max-w-[96px] max-h-[96px] object-contain leading-none drop-shadow-lg"
+        className="absolute inset-0 w-full h-full object-contain p-1 drop-shadow-lg"
       />
-      <span className={`text-[9px] font-mono leading-none mt-0.5 ${active ? 'text-[#ffd700]' : 'text-[#888]'}`}>
-        {CASTLE_NAMES[level] || 'Замок'}
-      </span>
-      <div className="flex gap-[3px] mt-0.5">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className="w-[4px] h-[4px] rounded-sm"
-            style={{ background: i < level ? '#ffd700' : '#2a2a1a' }}
-          />
-        ))}
+      <div className="absolute bottom-1 left-0 right-0 flex flex-col items-center gap-0.5 z-10">
+        <span className={`text-[9px] font-mono leading-none ${active ? 'text-[#ffd700]' : 'text-[#888]'}`}>
+          {CASTLE_NAMES[level] || 'Замок'}
+        </span>
+        <div className="flex gap-[3px]">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="w-[4px] h-[4px] rounded-sm"
+              style={{ background: i < level ? '#ffd700' : '#2a2a1a' }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -288,41 +290,45 @@ function BuildingTile({ bConfig, pBuilding, active }) {
 
   if (level === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-0.5 opacity-35">
+      <div className="relative h-full opacity-35">
         <GameImage
           src={buildingImg(bConfig.id, 1)}
           fallback={bConfig.icon}
           alt={bConfig.name}
-          className="w-full max-w-[64px] max-h-[64px] object-contain grayscale leading-none"
+          className="absolute inset-0 w-full h-full object-contain p-1.5 grayscale leading-none"
         />
-        <span className="text-[8px] font-mono text-[#444]">🔒</span>
+        <div className="absolute inset-0 flex items-end justify-center pb-1 z-10">
+          <span className="text-[8px] font-mono text-[#444]">🔒</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-0.5 p-0.5">
+    <div className="relative h-full">
       <GameImage
         src={buildingImg(bConfig.id, level)}
         fallback={bConfig.icon}
         alt={`${bConfig.name} рів.${level}`}
-        className="w-full max-w-[64px] max-h-[64px] object-contain leading-none drop-shadow-md"
+        className="absolute inset-0 w-full h-full object-contain p-1 leading-none drop-shadow-md"
       />
-      <span className={`text-[8px] font-mono leading-none ${active ? 'text-[var(--neon)]' : 'text-[#666]'}`}>
-        рів.{level}
-      </span>
-      {/* Точки робітників */}
-      {maxSlots > 0 && (
-        <div className="flex gap-[3px] mt-0.5">
-          {Array.from({ length: maxSlots }).map((_, i) => (
-            <div
-              key={i}
-              className="w-[4px] h-[4px] rounded-full"
-              style={{ background: i < workers ? 'var(--neon)' : '#2a2a1a' }}
-            />
-          ))}
-        </div>
-      )}
+      <div className="absolute bottom-0.5 left-0 right-0 flex flex-col items-center gap-0.5 z-10">
+        <span className={`text-[8px] font-mono leading-none ${active ? 'text-[var(--neon)]' : 'text-[#666]'}`}>
+          рів.{level}
+        </span>
+        {/* Точки робітників */}
+        {maxSlots > 0 && (
+          <div className="flex gap-[3px]">
+            {Array.from({ length: maxSlots }).map((_, i) => (
+              <div
+                key={i}
+                className="w-[4px] h-[4px] rounded-full"
+                style={{ background: i < workers ? 'var(--neon)' : '#2a2a1a' }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -336,7 +342,12 @@ function BuildingDetailPanel({ buildingId, player, buildings, onClose, onUpgrade
       <div className="mt-2 rounded-xl border border-[#4a3a18] bg-[var(--bg2)] p-4 animate-slide-up">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">🏰</span>
+            <GameImage
+              src={buildingImg('castle', level)}
+              fallback="🏰"
+              alt="Замок"
+              className="w-12 h-12 object-contain shrink-0"
+            />
             <div>
               <div className="font-bebas text-base tracking-widest text-[#ffd700]">ЗАМОК</div>
               <div className="text-xs text-[#666] font-mono">Рівень {level} / 5</div>
@@ -377,7 +388,12 @@ function BuildingDetailPanel({ buildingId, player, buildings, onClose, onUpgrade
       {/* Заголовок */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">{bConfig.icon}</span>
+          <GameImage
+            src={buildingImg(bConfig.id, level || 1)}
+            fallback={bConfig.icon}
+            alt={bConfig.name}
+            className="w-12 h-12 object-contain shrink-0"
+          />
           <div>
             <div className="font-bebas text-base tracking-widest text-white">
               {bConfig.name.toUpperCase()}
