@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore'
 import { db } from './config'
 import { CASTLE_MAX_UNITS } from './castleService'
+import { getHeroLevel } from '../store/gameStore'
 
 // ─── Константи ───────────────────────────────────────────────
 
@@ -147,8 +148,8 @@ export async function recruitUnit(playerId, unitId, amount = 1) {
 
     const player = snap.data()
 
-    // Перевірка рівня героя
-    if ((player.heroLevel || 1) < 2) throw new Error('Потрібен рівень героя 2+')
+    // Перевірка рівня героя (рівень обчислюється з player.xp)
+    if (getHeroLevel(player.xp || 0) < 2) throw new Error('Потрібен рівень героя 2+')
 
     // Перевірка ліміту юнітів (від замку)
     const castleLevel = player.castle?.level || 1
