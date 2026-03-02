@@ -1,60 +1,47 @@
-// ─── Landing Page (/): Вибір групи та вхід у гру ───
+// ─── Landing Page (/): Вхід за нікнеймом ───
 
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { GROUPS } from '../store/gameStore'
 import useGameStore from '../store/gameStore'
-import { findPlayer, normalizeName } from '../firebase/service'
+import { findPlayerByNickname } from '../firebase/service'
 import { Button, Input, Spinner, ErrorMsg } from '../components/UI'
 
 export default function Landing() {
   const navigate = useNavigate()
-  const { setSelectedGroup, setPlayer } = useGameStore()
+  const { setPlayer } = useGameStore()
 
-  const [step, setStep] = useState('group') // 'group' | 'name'
-  const [selectedGroup, setGroup] = useState(null)
-  const [name, setName] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const [pending, setPending]   = useState(false) // акаунт очікує підтвердження
 
-  // Список груп у потрібному порядку
-  const groupKeys = Object.keys(GROUPS)
-
-  // Крок 1: вибір групи
-  function handleGroupSelect(groupKey) {
-    setGroup(groupKey)
-    setSelectedGroup(groupKey)
-    setStep('name')
-    setError('')
-  }
-
-  // Крок 2: вхід
   async function handleEnter() {
-    if (!name.trim()) {
-      setError("Введи своє ім'я та прізвище")
-      return
-    }
-    if (!selectedGroup) {
-      setError('Оберіть групу')
+    const nick = nickname.trim()
+    if (!nick) {
+      setError('Введи свій нікнейм')
       return
     }
 
     setLoading(true)
     setError('')
+    setPending(false)
 
     try {
-      const player = await findPlayer(name, selectedGroup)
+      const player = await findPlayerByNickname(nick)
 
-      if (player) {
-        // Гравець знайдений — входимо в місто
+      if (!player) {
+        // Гравець не знайдений — реєстрація
+        sessionStorage.setItem('pendingNickname', nick.toLowerCase())
+        navigate('/create')
+      } else if (!player.status || player.status === 'active') {
+        // Активний гравець — вхід
         setPlayer(player)
         navigate('/city')
+      } else if (player.status === 'pending') {
+        // Очікує підтвердження
+        setPending(true)
       } else {
-        // Гравець не знайдений — створюємо героя
-        // Зберігаємо ім'я для HeroCreate
-        sessionStorage.setItem('pendingName', name.trim())
-        sessionStorage.setItem('pendingGroup', selectedGroup)
-        navigate('/create')
+        setError('Акаунт відхилено адміністратором')
       }
     } catch (err) {
       console.error(err)
@@ -110,56 +97,24 @@ export default function Landing() {
           </div>
         </div>
 
-        {/* ─── Крок 1: Вибір групи ─── */}
-        {step === 'group' && (
-          <div className="w-full flex flex-col gap-3">
-            <p className="text-center text-xs uppercase tracking-widest text-[#555] font-semibold">
-              Оберіть свою групу
+        {/* ─── Повідомлення про очікування ─── */}
+        {pending && (
+          <div className="w-full p-4 rounded-lg bg-[rgba(255,215,0,0.06)] border border-[rgba(255,215,0,0.2)] text-center">
+            <p className="text-sm text-[var(--gold)] font-semibold mb-1">⏳ Очікуємо підтвердження</p>
+            <p className="text-xs text-[#555]">
+              Твій акаунт зареєстровано. Адміністратор підтвердить його найближчим часом.
             </p>
-
-            {/* Сітка груп: 2+2+1 */}
-            <div className="grid grid-cols-2 gap-3">
-              {groupKeys.slice(0, 4).map(key => (
-                <GroupButton key={key} groupKey={key} group={GROUPS[key]} onSelect={handleGroupSelect} />
-              ))}
-            </div>
-            {groupKeys.length > 4 && (
-              <div className="flex justify-center">
-                <GroupButton
-                  groupKey={groupKeys[4]}
-                  group={GROUPS[groupKeys[4]]}
-                  onSelect={handleGroupSelect}
-                  className="w-1/2"
-                />
-              </div>
-            )}
           </div>
         )}
 
-        {/* ─── Крок 2: Ввід імені ─── */}
-        {step === 'name' && (
+        {/* ─── Форма входу ─── */}
+        {!pending && (
           <div className="w-full flex flex-col gap-4">
-            <button
-              onClick={() => { setStep('group'); setError('') }}
-              className="text-xs text-[#555] hover:text-[var(--text)] flex items-center gap-1 w-fit"
-            >
-              ← Змінити групу
-            </button>
-
-            {/* Показуємо вибрану групу */}
-            <div className="flex items-center justify-center gap-2 p-3 bg-[var(--bg3)] border border-[var(--border)] rounded">
-              <span className="text-[var(--accent)] font-bebas text-lg tracking-wider">
-                {GROUPS[selectedGroup]?.label}
-              </span>
-              <span className="text-[#555] text-sm">·</span>
-              <span className="text-[#888] text-sm">{GROUPS[selectedGroup]?.name}</span>
-            </div>
-
             <Input
-              label="Ім'я та Прізвище"
-              placeholder="Іван Петренко"
-              value={name}
-              onChange={e => { setName(e.target.value); setError('') }}
+              label="Нікнейм"
+              placeholder="твій_нікнейм"
+              value={nickname}
+              onChange={e => { setNickname(e.target.value); setError('') }}
               onKeyDown={e => e.key === 'Enter' && handleEnter()}
               autoFocus
             />
@@ -200,25 +155,5 @@ export default function Landing() {
         </div>
       </div>
     </div>
-  )
-}
-
-// Кнопка групи
-function GroupButton({ groupKey, group, onSelect, className = '' }) {
-  return (
-    <button
-      onClick={() => onSelect(groupKey)}
-      className={`
-        flex flex-col items-center justify-center gap-1
-        min-h-[72px] p-3
-        bg-[var(--card)] border border-[var(--border)] rounded-lg
-        hover:border-[var(--accent)] hover:bg-[#1a1a2a]
-        transition-all duration-200
-        ${className}
-      `}
-    >
-      <span className="font-bebas text-2xl tracking-wider text-white">{group.label}</span>
-      <span className="text-xs text-[#555]">{group.name}</span>
-    </button>
   )
 }

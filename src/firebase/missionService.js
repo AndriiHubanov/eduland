@@ -459,7 +459,7 @@ export const DEFAULT_STORY_MISSIONS = [
     reward: { gold: 1500, bits: 500, code: 200, crystals: 100, bio: 100, energy: 100 },
     xpReward: 100,
     diamondReward: 5,
-    nextMission: null,
+    nextMission: 'story_5_1',
     requires: 'story_3_3',
     loreText: 'Масивні двері відчиняються. Всередині — Протокол Відродження. Повний. Ти тримаєш в руках ключ до відновлення цивілізації. Але це лише початок...',
   },

@@ -4,7 +4,7 @@
 import { initializeApp } from 'firebase/app'
 import {
   getFirestore,
-  collection, doc, getDoc, getDocs, setDoc, updateDoc,
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
   addDoc, query, where, onSnapshot, serverTimestamp,
   runTransaction, writeBatch,
 } from 'firebase/firestore'
@@ -293,7 +293,7 @@ export function subscribePlayer(playerId, callback) {
 }
 
 // Створити нового гравця
-export async function createPlayer({ name, group, heroName, heroClass, heroStats, gender }) {
+export async function createPlayer({ name, group, heroName, heroClass, heroStats, gender, firstName, lastName, nickname }) {
   // Генеруємо позицію на карті (рандомна вільна клітинка 10x10)
   const cityPosition = await findFreeMapPosition(group)
 
@@ -304,6 +304,10 @@ export async function createPlayer({ name, group, heroName, heroClass, heroStats
     id: playerId,
     name,
     normalizedName: normalizeName(name),
+    firstName: firstName || '',
+    lastName:  lastName  || '',
+    nickname:  (nickname || normalizeName(name)).toLowerCase(),
+    status:    'pending',
     group,
     gender,
     heroName,
@@ -376,6 +380,40 @@ export async function updatePlayer(playerId, data) {
   await updateDoc(doc(db, 'players', playerId), {
     ...data,
     lastActive: serverTimestamp(),
+  })
+}
+
+// ─── Phase 21: Реєстрація з підтвердженням адміна ─────────────
+
+// Знайти гравця за нікнеймом (глобально унікальний)
+export async function findPlayerByNickname(nickname) {
+  const q = query(
+    collection(db, 'players'),
+    where('nickname', '==', nickname.trim().toLowerCase())
+  )
+  const snap = await getDocs(q)
+  if (snap.empty) return null
+  return { id: snap.docs[0].id, ...snap.docs[0].data() }
+}
+
+// Підтвердити гравця (адмін)
+export async function approvePlayer(playerId) {
+  await updateDoc(doc(db, 'players', playerId), { status: 'active' })
+}
+
+// Відхилити і видалити гравця (адмін)
+export async function rejectPlayer(playerId) {
+  await deleteDoc(doc(db, 'players', playerId))
+}
+
+// Підписка на гравців зі статусом 'pending'
+export function subscribePendingPlayers(callback) {
+  const q = query(
+    collection(db, 'players'),
+    where('status', '==', 'pending')
+  )
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
   })
 }
 

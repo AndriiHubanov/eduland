@@ -1,6 +1,6 @@
 // ─── App: Роутинг і ініціалізація ───
 
-import { useEffect, lazy, Suspense } from 'react'
+import React, { useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import useGameStore from './store/gameStore'
 import { initializeFirebaseData, getPlayer, subscribeUnreadCount } from './firebase/service'
@@ -20,6 +20,41 @@ const Trade     = lazy(() => import('./pages/Trade'))
 const Admin     = lazy(() => import('./pages/Admin'))
 const SurveyPage = lazy(() => import('./pages/SurveyPage'))
 const Wiki       = lazy(() => import('./pages/Wiki'))
+
+// ErrorBoundary — ловить помилки рендеру замість чорного екрану
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{ background: '#0a0a0f', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '32px', textAlign: 'center' }}
+        >
+          <div style={{ fontSize: '3rem' }}>⚠️</div>
+          <p style={{ color: '#ff4500', fontFamily: 'monospace', fontSize: '1.25rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+            Помилка завантаження
+          </p>
+          <p style={{ color: '#555', fontFamily: 'monospace', fontSize: '0.75rem', maxWidth: '320px' }}>
+            {this.state.error?.message || 'Невідома помилка'}
+          </p>
+          <button
+            onClick={() => window.location.href = import.meta.env.BASE_URL || '/'}
+            style={{ color: '#00ff88', border: '1px solid #00ff88', padding: '8px 16px', borderRadius: '6px', background: 'transparent', cursor: 'pointer', fontSize: '0.75rem' }}
+          >
+            ← На головну
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // Захищений маршрут — перевіряє авторизацію
 function PrivateRoute({ children }) {
@@ -57,27 +92,29 @@ export default function App() {
   }, [playerId])
 
   return (
-    <BrowserRouter>
-      <Suspense fallback={<Spinner text="Завантаження..." />}>
-        <Routes>
-          {/* Публічні маршрути */}
-          <Route path="/"       element={<Landing />} />
-          <Route path="/create" element={<HeroCreate />} />
-          <Route path="/admin"  element={<Admin />} />
-          <Route path="/wiki"   element={<Wiki />} />
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <ErrorBoundary>
+        <Suspense fallback={<Spinner text="Завантаження..." />}>
+          <Routes>
+            {/* Публічні маршрути */}
+            <Route path="/"       element={<Landing />} />
+            <Route path="/create" element={<HeroCreate />} />
+            <Route path="/admin"  element={<Admin />} />
+            <Route path="/wiki"   element={<Wiki />} />
 
-          {/* Захищені маршрути (потрібен гравець) */}
-          <Route path="/city"    element={<PrivateRoute><City /></PrivateRoute>} />
-          <Route path="/map"     element={<PrivateRoute><WorldMap /></PrivateRoute>} />
-          <Route path="/tasks"   element={<PrivateRoute><Tasks /></PrivateRoute>} />
-          <Route path="/inbox"   element={<PrivateRoute><Inbox /></PrivateRoute>} />
-          <Route path="/trade"   element={<PrivateRoute><Trade /></PrivateRoute>} />
-          <Route path="/surveys" element={<PrivateRoute><SurveyPage /></PrivateRoute>} />
+            {/* Захищені маршрути (потрібен гравець) */}
+            <Route path="/city"    element={<PrivateRoute><City /></PrivateRoute>} />
+            <Route path="/map"     element={<PrivateRoute><WorldMap /></PrivateRoute>} />
+            <Route path="/tasks"   element={<PrivateRoute><Tasks /></PrivateRoute>} />
+            <Route path="/inbox"   element={<PrivateRoute><Inbox /></PrivateRoute>} />
+            <Route path="/trade"   element={<PrivateRoute><Trade /></PrivateRoute>} />
+            <Route path="/surveys" element={<PrivateRoute><SurveyPage /></PrivateRoute>} />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }
