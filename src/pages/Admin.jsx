@@ -6,6 +6,7 @@ import {
   subscribePendingSubmissions, approveSubmission, rejectSubmission,
   createTask, deactivateTask, subscribeAllActiveTasks, getAllTasks,
   sendAdminMessage, addDiscipline, addBuilding,
+  subscribePendingPlayers, approvePlayer, rejectPlayer,
 } from '../firebase/service'
 import {
   Button, Card, Input, Tabs, Spinner, EmptyState,
@@ -21,11 +22,13 @@ const ADMIN_PASSWORD = 'nova2047'
 
 const GROUP_KEYS = Object.keys(GROUPS_CONFIG)
 
+const HERO_CLASSES_MAP = { guardian: 'Страж', archivist: 'Архіваріус', detective: 'Детектив', coordinator: 'Координатор' }
+
 export default function Admin() {
   const [auth, setAuth]     = useState(false)
   const [password, setPass] = useState('')
   const [passError, setPassError] = useState('')
-  const [activeTab, setActiveTab] = useState('approvals')
+  const [activeTab, setActiveTab] = useState('registrations')
 
   function handleLogin() {
     if (password === ADMIN_PASSWORD) {
@@ -63,6 +66,7 @@ export default function Admin() {
   }
 
   const tabs = [
+    { id: 'registrations', label: '👤 Заявки' },
     { id: 'approvals',   label: '✓ Підтвердження' },
     { id: 'tasks',       label: 'Завдання' },
     { id: 'tests',       label: 'Тести' },
@@ -97,6 +101,7 @@ export default function Admin() {
       </div>
 
       <main className="flex-1 p-4 max-w-2xl mx-auto w-full">
+        {activeTab === 'registrations' && <RegistrationsTab />}
         {activeTab === 'approvals'   && <ApprovalsTab />}
         {activeTab === 'tasks'       && <TasksTab type="open" />}
         {activeTab === 'tests'       && <TasksTab type="test" />}
@@ -107,6 +112,89 @@ export default function Admin() {
         {activeTab === 'buildings'   && <BuildingsTab />}
         {activeTab === 'mail'        && <MailTab />}
       </main>
+    </div>
+  )
+}
+
+// ─── РЕЄСТРАЦІЇ ───────────────────────────────────────────────
+function RegistrationsTab() {
+  const [pending, setPending]     = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [processing, setProcessing] = useState(null)
+  const [error, setError]         = useState('')
+
+  useEffect(() => {
+    const unsub = subscribePendingPlayers((data) => {
+      setPending(data)
+      setLoading(false)
+    })
+    return () => unsub()
+  }, [])
+
+  async function handleApprove(p) {
+    setProcessing(p.id)
+    try { await approvePlayer(p.id) } catch { setError('Помилка підтвердження') }
+    finally { setProcessing(null) }
+  }
+
+  async function handleReject(p) {
+    setProcessing(p.id)
+    try { await rejectPlayer(p.id) } catch { setError('Помилка відхилення') }
+    finally { setProcessing(null) }
+  }
+
+  if (loading) return <Spinner text="Завантаження..." />
+
+  return (
+    <div className="flex flex-col gap-3 py-3">
+      {error && <ErrorMsg text={error} />}
+      {pending.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-[#888]">
+          <div className="w-2 h-2 rounded-full bg-[var(--gold)] animate-pulse" />
+          {pending.length} нових заявок
+        </div>
+      )}
+      {pending.length === 0 ? (
+        <EmptyState icon="✅" text="Нових заявок немає" />
+      ) : (
+        pending.map(p => (
+          <Card key={p.id} className={processing === p.id ? 'opacity-50 pointer-events-none' : ''}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <div className="font-semibold text-white">{p.firstName} {p.lastName}</div>
+                <div className="text-xs text-[#888] font-mono">@{p.nickname}</div>
+              </div>
+              <div className="text-right text-xs text-[#555]">
+                <div>{GROUPS_CONFIG[p.group]?.label || p.group}</div>
+                <div>{HERO_CLASSES_MAP[p.heroClass] || p.heroClass}</div>
+              </div>
+            </div>
+            {p.heroName && (
+              <div className="text-xs text-[#555] mb-2">
+                Позивний: <span className="text-[var(--neon)]">{p.heroName}</span>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="neon"
+                className="text-sm py-2"
+                disabled={processing === p.id}
+                onClick={() => handleApprove(p)}
+              >
+                ✓ Прийняти
+              </Button>
+              <Button
+                variant="ghost"
+                className="text-sm py-2"
+                disabled={processing === p.id}
+                onClick={() => handleReject(p)}
+              >
+                ✗ Відхилити
+              </Button>
+            </div>
+          </Card>
+        ))
+      )}
     </div>
   )
 }

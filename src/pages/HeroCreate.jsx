@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { HERO_CLASSES } from '../store/gameStore'
+import { HERO_CLASSES, GROUPS } from '../store/gameStore'
 import useGameStore from '../store/gameStore'
 import { createPlayer } from '../firebase/service'
 import { Button, Input, Spinner, ErrorMsg, Card } from '../components/UI'
@@ -13,23 +13,26 @@ const FREE_POINTS = 3
 
 export default function HeroCreate() {
   const navigate = useNavigate()
-  const { setPlayer, setSelectedGroup } = useGameStore()
+  const { setSelectedGroup } = useGameStore()
 
-  // Дані з sessionStorage (встановлені на Landing)
-  const pendingName  = sessionStorage.getItem('pendingName') || ''
-  const pendingGroup = sessionStorage.getItem('pendingGroup') || ''
+  // Нікнейм з sessionStorage (встановлений на Landing)
+  const pendingNickname = sessionStorage.getItem('pendingNickname') || ''
 
+  const [selectedGroup, setGroup] = useState(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName]   = useState('')
   const [selectedClass, setSelectedClass] = useState(null)
-  const [heroName, setHeroName] = useState('')
-  const [gender, setGender] = useState(null) // 'male' | 'female'
+  const [heroName, setHeroName]   = useState('')
+  const [gender, setGender]       = useState(null) // 'male' | 'female'
   const [bonusStats, setBonusStats] = useState({ intellect: 0, endurance: 0, charisma: 0 })
   const [freePoints, setFreePoints] = useState(FREE_POINTS)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
+  const [done, setDone]           = useState(false)
 
-  // Якщо немає даних — повернути на Landing (через useEffect, не під час рендеру)
+  // Якщо немає нікнейму — повернути на Landing
   useEffect(() => {
-    if (!pendingName || !pendingGroup) navigate('/')
+    if (!pendingNickname) navigate('/')
   }, [])
 
   // Скидаємо бонуси при зміні класу
@@ -38,7 +41,7 @@ export default function HeroCreate() {
     setFreePoints(FREE_POINTS)
   }, [selectedClass])
 
-  if (!pendingName || !pendingGroup) return null
+  if (!pendingNickname) return null
 
   function addStatPoint(stat) {
     if (freePoints <= 0) return
@@ -53,6 +56,9 @@ export default function HeroCreate() {
   }
 
   async function handleCreate() {
+    if (!selectedGroup) { setError('Оберіть групу'); return }
+    if (!firstName.trim()) { setError("Введіть ім'я"); return }
+    if (!lastName.trim())  { setError('Введіть прізвище'); return }
     if (!selectedClass) { setError('Оберіть клас героя'); return }
     if (!heroName.trim()) { setError('Введіть позивний героя'); return }
     if (!gender) { setError('Оберіть стать'); return }
@@ -63,29 +69,27 @@ export default function HeroCreate() {
     try {
       const classData = HERO_CLASSES[selectedClass]
 
-      // Базові характеристики + бонус класу + вільні очки
       const heroStats = {
         intellect:  5 + (classData.statBonus.intellect  || 0) + bonusStats.intellect,
         endurance:  5 + (classData.statBonus.endurance  || 0) + bonusStats.endurance,
         charisma:   5 + (classData.statBonus.charisma   || 0) + bonusStats.charisma,
       }
 
-      const player = await createPlayer({
-        name:      pendingName,
-        group:     pendingGroup,
+      await createPlayer({
+        name:      `${firstName.trim()} ${lastName.trim()}`,
+        group:     selectedGroup,
         heroName:  heroName.trim(),
         heroClass: selectedClass,
         heroStats,
         gender,
+        firstName: firstName.trim(),
+        lastName:  lastName.trim(),
+        nickname:  pendingNickname,
       })
 
-      // Очищаємо sessionStorage
-      sessionStorage.removeItem('pendingName')
-      sessionStorage.removeItem('pendingGroup')
-
-      setPlayer(player)
-      setSelectedGroup(pendingGroup)
-      navigate('/city')
+      sessionStorage.removeItem('pendingNickname')
+      setSelectedGroup(selectedGroup)
+      setDone(true)
     } catch (err) {
       console.error(err)
       if (err?.message?.includes('offline') || err?.code === 'unavailable') {
@@ -98,6 +102,25 @@ export default function HeroCreate() {
     }
   }
 
+  // ─── Екран підтвердження ───
+  if (done) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4"
+           style={{ background: 'linear-gradient(180deg, #0a0a0f 0%, #0f0f1a 100%)' }}>
+        <Card className="max-w-sm w-full text-center flex flex-col gap-4 border-[var(--neon)] bg-[rgba(0,255,136,0.05)]">
+          <div className="text-4xl">✅</div>
+          <p className="font-bebas text-2xl tracking-wider text-white">Запит надіслано!</p>
+          <p className="text-sm text-[#888] leading-relaxed">
+            Адміністратор підтвердить твій акаунт найближчим часом.<br />
+            Після підтвердження ввійди за нікнеймом:
+          </p>
+          <p className="font-mono text-[var(--neon)] text-sm">@{pendingNickname}</p>
+          <Button variant="accent" onClick={() => navigate('/')}>← На головну</Button>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex flex-col"
          style={{ background: 'linear-gradient(180deg, #0a0a0f 0%, #0f0f1a 100%)' }}>
@@ -108,12 +131,51 @@ export default function HeroCreate() {
           ← Назад
         </button>
         <h1 className="font-bebas text-3xl tracking-wider text-white mt-1">СТВОРЕННЯ ГЕРОЯ</h1>
-        <p className="text-sm text-[#888]">
-          {pendingName} · <span className="text-[var(--accent)]">{pendingGroup}</span>
-        </p>
+        <p className="text-sm text-[#888] font-mono">@{pendingNickname}</p>
       </div>
 
       <div className="flex-1 p-4 pb-24 flex flex-col gap-6 max-w-lg mx-auto w-full">
+
+        {/* ─── Група ─── */}
+        <section>
+          <p className="text-xs uppercase tracking-widest text-[#555] font-semibold mb-3">
+            Навчальна група
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.entries(GROUPS).map(([key, grp]) => (
+              <button
+                key={key}
+                onClick={() => { setGroup(key); setError('') }}
+                className={`flex flex-col items-center justify-center gap-1 min-h-[60px] p-3 rounded-lg border transition-all duration-200 ${
+                  selectedGroup === key
+                    ? 'border-[var(--accent)] bg-[rgba(255,69,0,0.1)]'
+                    : 'border-[var(--border)] bg-[var(--card)] hover:border-[#333]'
+                }`}
+              >
+                <span className="font-bebas text-xl tracking-wider text-white">{grp.label}</span>
+                <span className="text-[10px] text-[#555]">{grp.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ─── Ім'я та прізвище ─── */}
+        <section className="flex flex-col gap-3">
+          <Input
+            label="Ім'я"
+            placeholder="Іван"
+            value={firstName}
+            onChange={e => { setFirstName(e.target.value); setError('') }}
+            maxLength={30}
+          />
+          <Input
+            label="Прізвище"
+            placeholder="Петренко"
+            value={lastName}
+            onChange={e => { setLastName(e.target.value); setError('') }}
+            maxLength={30}
+          />
+        </section>
 
         {/* ─── Клас героя ─── */}
         <section>
@@ -197,7 +259,6 @@ export default function HeroCreate() {
         {/* Попередній перегляд + розподіл очок */}
         {selectedClass && (
           <Card className="border-[var(--neon)] bg-[rgba(0,255,136,0.05)]">
-            {/* Заголовок */}
             {heroName && gender && (
               <>
                 <p className="text-xs text-[#555] uppercase tracking-wider mb-2">Твій герой</p>
@@ -210,13 +271,14 @@ export default function HeroCreate() {
                   />
                   <div>
                     <div className="font-bebas text-xl text-white">{heroName}</div>
-                    <div className="text-sm text-[#888]">{HERO_CLASSES[selectedClass].name} · {pendingGroup}</div>
+                    <div className="text-sm text-[#888]">
+                      {HERO_CLASSES[selectedClass].name} · {selectedGroup ? GROUPS[selectedGroup]?.label : '?'}
+                    </div>
                   </div>
                 </div>
               </>
             )}
 
-            {/* Розподіл вільних очок */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs text-[#555] uppercase tracking-wider">Характеристики</p>
@@ -260,7 +322,6 @@ export default function HeroCreate() {
 
         {error && <ErrorMsg text={error} />}
 
-        {/* Кнопка */}
         {loading ? (
           <Spinner text="Засновую місто..." />
         ) : (
@@ -269,7 +330,7 @@ export default function HeroCreate() {
             className="w-full text-xl py-4 font-bebas tracking-wider"
             onClick={handleCreate}
           >
-            ЗАСНУВАТИ МІСТО
+            НАДІСЛАТИ ЗАЯВКУ
           </Button>
         )}
       </div>
